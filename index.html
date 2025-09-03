@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مدیریت مالی شخصی</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Persian Font: Vazirmatn -->
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Vazirmatn', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 24px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+        }
+        .btn-primary { background-color: #3b82f6; color: white; }
+        .btn-primary:hover { background-color: #2563eb; }
+        .btn-secondary { background-color: #6b7280; color: white; }
+        .btn-secondary:hover { background-color: #4b5563; }
+        .btn-success { background-color: #22c55e; color: white; }
+        .btn-success:hover { background-color: #16a34a; }
+        .btn-danger { background-color: #ef4444; color: white; }
+        .btn-danger:hover { background-color: #dc2626; }
+        .btn-edit { background-color: #f97316; color: white; }
+        .btn-edit:hover { background-color: #ea580c; }
+        .date-btn {
+            background-color: #e5e7eb;
+            color: #374151;
+            padding: 6px 12px;
+            font-size: 0.875rem;
+        }
+        .date-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+        }
+        .income { color: #16a34a; }
+        .expense { color: #dc2626; }
+
+        .type-toggle {
+            display: flex;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .type-toggle button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background-color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-weight: 500;
+        }
+        .type-toggle button.active {
+            color: white;
+        }
+        .type-toggle button.active.income-btn { background-color: #22c55e; }
+        .type-toggle button.active.expense-btn { background-color: #ef4444; }
+        
+        .due-soon {
+            color: #ef4444;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-xl text-center w-full max-w-sm mx-4">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">ورود</h2>
+            <p class="text-gray-600 mb-6">برای دسترسی به برنامه، لطفاً رمز عبور را وارد کنید.</p>
+            <form id="login-form">
+                <input type="password" id="password-input" class="form-input text-center tracking-[.5em]" placeholder="••••" autofocus>
+                <p id="login-error" class="text-red-500 text-sm mt-2 hidden">رمز عبور اشتباه است.</p>
+                <button type="submit" class="btn btn-primary w-full mt-6">ورود</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Installment Modal -->
+    <div id="installment-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm mx-4">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 text-center">افزودن قسط جدید</h2>
+            <form id="installment-form" class="space-y-4">
+                <div>
+                    <label for="installment-name" class="block mb-2 font-semibold text-gray-700">نام قسط</label>
+                    <input type="text" id="installment-name" class="form-input" placeholder="مثال: بانک ملت" required>
+                </div>
+                <div>
+                    <label for="installment-day" class="block mb-2 font-semibold text-gray-700">روز سررسید (در ماه)</label>
+                    <input type="number" id="installment-day" class="form-input" placeholder="مثال: 15" required min="1" max="31">
+                </div>
+                <div>
+                    <label for="installment-amount" class="block mb-2 font-semibold text-gray-700">مبلغ (تومان)</label>
+                    <input type="number" id="installment-amount" class="form-input" placeholder="مثال: 2000000" required min="0">
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="btn btn-primary w-full">افزودن</button>
+                    <button type="button" id="cancel-installment-btn" class="btn btn-secondary w-full">انصراف</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main App Container (Initially Hidden) -->
+    <div id="app-container" class="hidden">
+        <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+            
+            <header class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">مدیریت مالی شخصی</h1>
+                <p id="current-date" class="text-sm text-gray-500 mt-2"></p>
+                <p class="text-gray-500 mt-2">درآمد و هزینه‌های خود را به سادگی ثبت و تحلیل کنید.</p>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                <div class="lg:col-span-1 space-y-8">
+                    <!-- Installments Card -->
+                    <div class="card">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                             <h2 class="text-xl font-bold">اقساط ماهانه</h2>
+                             <button id="add-installment-btn" class="text-blue-600 hover:text-blue-800 text-sm font-semibold">افزودن قسط</button>
+                        </div>
+                        <ul id="installments-list" class="space-y-2 text-sm max-h-48 overflow-y-auto pr-1">
+                           <!-- Installments will be rendered here -->
+                        </ul>
+                        <!-- Installment Summary -->
+                        <div id="installment-summary" class="mt-4 pt-4 border-t text-sm space-y-2">
+                            <div class="flex justify-between font-semibold">
+                                <span>مجموع اقساط:</span>
+                                <span id="total-installments">۰ تومان</span>
+                            </div>
+                            <div class="flex justify-between text-gray-600">
+                                <span>میانگین روزانه:</span>
+                                <span id="daily-installments">۰ تومان</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2 id="form-title" class="text-xl font-bold mb-4 border-b pb-2">ثبت تراکنش جدید</h2>
+                        <form id="transaction-form" class="space-y-4">
+                            <input type="hidden" id="transaction-id">
+                            <div>
+                                <label for="date-picker" class="block mb-2 font-semibold text-gray-700">تاریخ</label>
+                                <input type="date" id="date-picker" class="form-input" autocomplete="off">
+                            </div>
+                            <div>
+                                <label class="block mb-2 font-semibold text-gray-700">نوع تراکنش</label>
+                                <div class="type-toggle">
+                                    <button type="button" id="income-btn" class="income-btn active">درآمد / سود</button>
+                                    <button type="button" id="expense-btn" class="expense-btn">هزینه</button>
+                                </div>
+                            </div>
+                             <div id="category-wrapper">
+                                <label for="category" class="block mb-2 font-semibold text-gray-700">دسته‌بندی</label>
+                                <select id="category" class="form-input"></select>
+                            </div>
+                            <div>
+                                <label for="description" class="block mb-2 font-semibold text-gray-700">شرح تراکنش</label>
+                                <input type="text" id="description" class="form-input" placeholder="شرح (اختیاری)">
+                            </div>
+                            <div>
+                                <label for="amount" class="block mb-2 font-semibold text-gray-700">مبلغ (تومان)</label>
+                                <input type="number" id="amount" class="form-input" placeholder="مثال: 1500000" required min="0">
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="submit" id="submit-btn" class="btn btn-primary w-full">افزودن</button>
+                                <button type="button" id="cancel-btn" class="btn btn-secondary w-full hidden">انصراف</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                            <h2 class="text-xl font-bold">خلاصه روز (<span id="summary-date-display"></span>)</h2>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center"><span class="font-semibold text-gray-600">جمع درآمد:</span><span id="total-income" class="font-bold text-lg income">۰ تومان</span></div>
+                            <div class="flex justify-between items-center"><span class="font-semibold text-gray-600">جمع هزینه‌ها:</span><span id="total-expense" class="font-bold text-lg expense">۰ تومان</span></div>
+                            <hr>
+                            <div class="flex justify-between items-center"><span class="font-bold text-gray-800 text-lg">سود/زیان خالص:</span><span id="net-profit" class="font-bold text-xl">۰ تومان</span></div>
+                        </div>
+                    </div>
+
+                     <div class="card">
+                        <h2 class="text-xl font-bold mb-4 border-b pb-2">روزهای ثبت شده</h2>
+                        <div id="recorded-days-list" class="flex flex-wrap gap-2">
+                            <p class="text-gray-500 text-sm">هنوز روزی ثبت نشده است.</p>
+                        </div>
+                    </div>
+
+                    <!-- Import/Export Card -->
+                    <div class="card">
+                        <h2 class="text-xl font-bold mb-4 border-b pb-2">مدیریت داده‌ها</h2>
+                        <div class="space-y-3">
+                             <button id="export-telegram-btn" class="btn btn-success w-full">ارسال گزارش به تلگرام</button>
+                             <button id="export-json-btn" class="btn btn-primary w-full">دانلود پشتیبان (JSON)</button>
+                             <button id="import-btn" class="btn btn-secondary w-full">ورود داده (JSON)</button>
+                             <input type="file" id="import-file-input" class="hidden" accept=".json">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2 space-y-8">
+                    <div class="card">
+                        <h2 id="transaction-list-title" class="text-xl font-bold mb-4 border-b pb-2">لیست تراکنش‌ها</h2>
+                        <div id="transaction-list" class="space-y-3 max-h-[30rem] overflow-y-auto pr-2">
+                             <p class="text-gray-500 text-center py-4">روزی را برای نمایش انتخاب کنید.</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2 class="text-xl font-bold mb-4 border-b pb-2">تحلیل کلی (۱۴ روز گذشته)</h2>
+                        <canvas id="myChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- LOGIN LOGIC ---
+            const loginModal = document.getElementById('login-modal');
+            const loginForm = document.getElementById('login-form');
+            const passwordInput = document.getElementById('password-input');
+            const loginError = document.getElementById('login-error');
+            const appContainer = document.getElementById('app-container');
+
+            if (sessionStorage.getItem('isLoggedIn') === 'true') {
+                showApp();
+            } else {
+                loginModal.style.display = 'flex';
+            }
+
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                if (passwordInput.value === '4006') {
+                    sessionStorage.setItem('isLoggedIn', 'true');
+                    showApp();
+                } else {
+                    loginError.classList.remove('hidden');
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+            });
+
+            function showApp() {
+                loginModal.style.display = 'none';
+                appContainer.classList.remove('hidden');
+                initializeApp();
+            }
+
+            // --- MAIN APP LOGIC ---
+            function initializeApp() {
+                // DOM Elements
+                const transactionForm = document.getElementById('transaction-form');
+                const formTitle = document.getElementById('form-title');
+                const descriptionInput = document.getElementById('description');
+                const amountInput = document.getElementById('amount');
+                const datePickerEl = document.getElementById('date-picker');
+                const transactionList = document.getElementById('transaction-list');
+                const transactionListTitle = document.getElementById('transaction-list-title');
+                const totalIncomeEl = document.getElementById('total-income');
+                const totalExpenseEl = document.getElementById('total-expense');
+                const netProfitEl = document.getElementById('net-profit');
+                const chartCanvas = document.getElementById('myChart');
+                const incomeBtn = document.getElementById('income-btn');
+                const expenseBtn = document.getElementById('expense-btn');
+                const categoryWrapper = document.getElementById('category-wrapper');
+                const categorySelect = document.getElementById('category');
+                const transactionIdInput = document.getElementById('transaction-id');
+                const submitBtn = document.getElementById('submit-btn');
+                const cancelBtn = document.getElementById('cancel-btn');
+                const summaryDateDisplay = document.getElementById('summary-date-display');
+                const recordedDaysList = document.getElementById('recorded-days-list');
+                const exportJsonBtn = document.getElementById('export-json-btn');
+                const exportTelegramBtn = document.getElementById('export-telegram-btn');
+                const importBtn = document.getElementById('import-btn');
+                const importFileInput = document.getElementById('import-file-input');
+                const currentDateEl = document.getElementById('current-date');
+                
+                // Installment Elements
+                const installmentsList = document.getElementById('installments-list');
+                const addInstallmentBtn = document.getElementById('add-installment-btn');
+                const installmentModal = document.getElementById('installment-modal');
+                const installmentForm = document.getElementById('installment-form');
+                const cancelInstallmentBtn = document.getElementById('cancel-installment-btn');
+                const totalInstallmentsEl = document.getElementById('total-installments');
+                const dailyInstallmentsEl = document.getElementById('daily-installments');
+
+                // App State
+                let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+                let myChart;
+                let selectedType = 'income';
+                let editMode = false;
+                const defaultInstallments = [
+                    { id: 1, name: 'بانک ملت', day: 15, amount: 2000000 },
+                    { id: 2, name: 'بانک پاسارگاد (ویپاد)', day: 16, amount: 4700000 },
+                    { id: 3, name: 'دیجی‌پی یک', day: 19, amount: 1250000 },
+                    { id: 4, name: 'دیجی‌پی دو', day: 26, amount: 1400000 },
+                    { id: 5, name: 'دندانپزشکی', day: 29, amount: 1700000 },
+                    { id: 6, name: 'اسنپ شاپ', day: 30, amount: 500000 }
+                ];
+                let installments = JSON.parse(localStorage.getItem('installments')) || defaultInstallments;
+                
+                const incomeCategories = ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'];
+                const expenseCategories = ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'سایر'];
+
+                // --- UTILITY FUNCTIONS ---
+                const formatCurrency = (num) => new Intl.NumberFormat('fa-IR').format(num) + ' تومان';
+                const formatDate = (dateStr, options = { year: 'numeric', month: 'long', day: 'numeric' }) => {
+                    if (!dateStr) return '';
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    return new Date(year, month - 1, day).toLocaleDateString('fa-IR', options);
+                };
+                const getTodayDateString = () => new Date().toISOString().split('T')[0];
+                const getPersianDay = () => parseInt(new Date().toLocaleDateString('fa-IR-u-nu-latn').split('/')[2], 10);
+
+                // --- INSTALLMENT LOGIC ---
+                function updateInstallmentSummary() {
+                    const totalAmount = installments.reduce((sum, inst) => sum + inst.amount, 0);
+                    const dailyAmount = totalAmount > 0 ? totalAmount / 30 : 0;
+                    totalInstallmentsEl.textContent = formatCurrency(totalAmount);
+                    dailyInstallmentsEl.textContent = formatCurrency(Math.round(dailyAmount));
+                }
+                function renderInstallments() {
+                    installmentsList.innerHTML = '';
+                    const currentDay = getPersianDay();
+                    if (installments.length === 0) {
+                        installmentsList.innerHTML = `<p class="text-gray-500 text-center text-xs">قسطی ثبت نشده است.</p>`;
+                    } else {
+                        installments.sort((a, b) => a.day - b.day).forEach(inst => {
+                            const li = document.createElement('li');
+                            li.className = 'flex justify-between items-center p-2 rounded-md hover:bg-gray-50';
+                            const isDueSoon = currentDay >= (inst.day - 5) && currentDay <= inst.day;
+                            const dueClass = isDueSoon ? 'due-soon' : '';
+                            li.innerHTML = `
+                                <div class="flex-grow ${dueClass}">
+                                    <span>${inst.name}</span>
+                                    <span class="text-gray-500 text-xs">(هر ماه ${inst.day}م)</span>
+                                </div>
+                                <span class="font-semibold w-28 text-left ${dueClass}">${formatCurrency(inst.amount)}</span>
+                                <button class="delete-installment-btn text-red-400 hover:text-red-600 mr-2 text-xs" data-id="${inst.id}">حذف</button>
+                            `;
+                            installmentsList.appendChild(li);
+                        });
+                        document.querySelectorAll('.delete-installment-btn').forEach(button => {
+                            button.addEventListener('click', (e) => {
+                                const idToDelete = parseInt(e.target.dataset.id, 10);
+                                if (confirm('آیا از حذف این قسط مطمئن هستید؟')) {
+                                    installments = installments.filter(inst => inst.id !== idToDelete);
+                                    saveAndRenderInstallments();
+                                }
+                            });
+                        });
+                    }
+                    updateInstallmentSummary();
+                }
+                function saveAndRenderInstallments() {
+                    localStorage.setItem('installments', JSON.stringify(installments));
+                    renderInstallments();
+                }
+                addInstallmentBtn.addEventListener('click', () => installmentModal.classList.remove('hidden'));
+                cancelInstallmentBtn.addEventListener('click', () => {
+                    installmentModal.classList.add('hidden');
+                    installmentForm.reset();
+                });
+                installmentForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    installments.push({
+                        id: Date.now(),
+                        name: document.getElementById('installment-name').value,
+                        day: parseInt(document.getElementById('installment-day').value, 10),
+                        amount: parseInt(document.getElementById('installment-amount').value, 10)
+                    });
+                    saveAndRenderInstallments();
+                    installmentForm.reset();
+                    installmentModal.classList.add('hidden');
+                });
+
+                // --- CATEGORY & TYPE HANDLING ---
+                const updateCategoryOptions = (type) => {
+                    categorySelect.innerHTML = '';
+                    const categories = type === 'income' ? incomeCategories : expenseCategories;
+                    categories.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat;
+                        option.textContent = cat;
+                        categorySelect.appendChild(option);
+                    });
+                };
+                const setTransactionType = (type) => {
+                    selectedType = type;
+                    incomeBtn.classList.toggle('active', type === 'income');
+                    expenseBtn.classList.toggle('active', type === 'expense');
+                    categoryWrapper.style.display = 'block';
+                    updateCategoryOptions(type);
+                };
+
+                // --- UI & RENDER FUNCTIONS ---
+                const renderForDate = (date) => {
+                    renderTransactions(date);
+                    renderRecordedDays();
+                };
+                const renderTransactions = (date) => {
+                    const dailyTransactions = transactions.filter(t => t.date === date).sort((a, b) => b.createdAt - a.createdAt);
+                    transactionList.innerHTML = '';
+                    transactionListTitle.textContent = `لیست تراکنش‌ها (${formatDate(date)})`;
+                    if (dailyTransactions.length === 0) {
+                        transactionList.innerHTML = `<p class="text-gray-500 text-center py-4">هنوز تراکنشی برای این روز ثبت نشده است.</p>`;
+                    } else {
+                        dailyTransactions.forEach(t => {
+                            const item = document.createElement('div');
+                            const amountClass = t.type === 'income' ? 'income' : 'expense';
+                            const sign = t.type === 'income' ? '+' : '-';
+                            const mainDescription = t.description || t.category;
+                            const subDescription = t.description && t.category ? `<p class="text-sm text-gray-500">${t.category}</p>` : '';
+                            const timeHTML = t.time ? `<span class="text-xs text-gray-400 mr-2 font-normal">(${t.time})</span>` : '';
+                            item.className = `flex items-center p-3 rounded-lg ${t.type === 'income' ? 'bg-green-50' : 'bg-red-50'}`;
+                            item.innerHTML = `
+                                <div class="flex-grow">
+                                    <div class="flex items-baseline">
+                                        <p class="font-semibold text-gray-800">${mainDescription}</p>
+                                        ${timeHTML}
+                                    </div>
+                                    ${subDescription}
+                                </div>
+                                <div class="text-left ml-4">
+                                    <p class="text-md ${amountClass} font-bold">${sign}${formatCurrency(t.amount)}</p>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="startEditTransaction('${t.id}')" class="btn btn-edit text-xs py-1 px-2">ویرایش</button>
+                                    <button onclick="deleteTransaction('${t.id}')" class="btn btn-danger text-xs py-1 px-2">حذف</button>
+                                </div>
+                            `;
+                            transactionList.appendChild(item);
+                        });
+                    }
+                    updateSummary(date);
+                    updateChart();
+                };
+                const updateSummary = (date) => {
+                    const dailyTransactions = transactions.filter(t => t.date === date);
+                    const income = dailyTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+                    const expense = dailyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+                    const netProfit = income - expense;
+                    summaryDateDisplay.textContent = formatDate(date);
+                    totalIncomeEl.textContent = formatCurrency(income);
+                    totalExpenseEl.textContent = formatCurrency(expense);
+                    netProfitEl.textContent = formatCurrency(netProfit);
+                    netProfitEl.className = 'font-bold text-xl'; // Reset classes
+                    if (netProfit > 0) netProfitEl.classList.add('income');
+                    else if (netProfit < 0) netProfitEl.classList.add('expense');
+                    else netProfitEl.classList.add('text-gray-800');
+                };
+                const renderRecordedDays = () => {
+                    const uniqueDates = [...new Set(transactions.map(t => t.date))].sort((a, b) => new Date(b) - new Date(a));
+                    recordedDaysList.innerHTML = '';
+                    if (uniqueDates.length === 0) {
+                        recordedDaysList.innerHTML = '<p class="text-gray-500 text-sm">هنوز روزی ثبت نشده است.</p>';
+                        return;
+                    }
+                    uniqueDates.forEach(date => {
+                        const button = document.createElement('button');
+                        button.className = 'btn date-btn';
+                        button.textContent = formatDate(date, { day: 'numeric', month: 'short' });
+                        if (date === datePickerEl.value) {
+                            button.classList.add('active');
+                        }
+                        button.onclick = () => {
+                            datePickerEl.value = date;
+                            renderForDate(date);
+                        };
+                        recordedDaysList.appendChild(button);
+                    });
+                };
+                const updateChart = () => {
+                    const dates = [];
+                    const netProfits = [];
+                    for (let i = 13; i >= 0; i--) {
+                        const d = new Date();
+                        d.setDate(d.getDate() - i);
+                        const dateStr = d.toISOString().split('T')[0];
+                        const dailyNet = transactions.filter(t => t.date === dateStr).reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+                        dates.push(formatDate(dateStr, { weekday: 'short', day: 'numeric' }));
+                        netProfits.push(dailyNet);
+                    }
+                    const chartData = {
+                        labels: dates,
+                        datasets: [{
+                            label: 'سود/زیان خالص',
+                            data: netProfits,
+                            backgroundColor: netProfits.map(p => p >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                            borderColor: netProfits.map(p => p >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'),
+                            borderWidth: 1,
+                            borderRadius: 5,
+                        }]
+                    };
+                    if (myChart) {
+                        myChart.data = chartData;
+                        myChart.update();
+                    } else {
+                        myChart = new Chart(chartCanvas, {
+                            type: 'bar',
+                            data: chartData,
+                            options: {
+                                responsive: true,
+                                scales: { y: { ticks: { callback: (value) => new Intl.NumberFormat('fa-IR').format(value) } } },
+                                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => formatCurrency(context.parsed.y) } } }
+                            }
+                        });
+                    }
+                };
+
+                // --- CRUD & FORM LOGIC ---
+                const handleFormSubmit = (e) => {
+                    e.preventDefault();
+                    if (!amountInput.value) return;
+                    const transactionData = {
+                        description: descriptionInput.value.trim(),
+                        amount: +amountInput.value,
+                        type: selectedType,
+                        category: categorySelect.value,
+                        date: datePickerEl.value,
+                    };
+                    if (editMode) {
+                        const index = transactions.findIndex(t => t.id === transactionIdInput.value);
+                        if (index > -1) transactions[index] = { ...transactions[index], ...transactionData };
+                    } else {
+                        transactions.push({
+                            ...transactionData,
+                            id: crypto.randomUUID(),
+                            createdAt: Date.now(),
+                            time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
+                        });
+                    }
+                    saveToLocalStorage();
+                    renderForDate(datePickerEl.value);
+                    resetForm();
+                };
+                window.startEditTransaction = (id) => {
+                    const t = transactions.find(t => t.id === id);
+                    if (!t) return;
+                    editMode = true;
+                    transactionIdInput.value = t.id;
+                    descriptionInput.value = t.description;
+                    amountInput.value = t.amount;
+                    datePickerEl.value = t.date;
+                    setTransactionType(t.type);
+                    categorySelect.value = t.category;
+                    formTitle.textContent = 'ویرایش تراکنش';
+                    submitBtn.textContent = 'ذخیره تغییرات';
+                    cancelBtn.classList.remove('hidden');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                };
+                const resetForm = () => {
+                    editMode = false;
+                    transactionForm.reset();
+                    transactionIdInput.value = '';
+                    formTitle.textContent = 'ثبت تراکنش جدید';
+                    submitBtn.textContent = 'افزودن';
+                    cancelBtn.classList.add('hidden');
+                    setTransactionType('income');
+                    datePickerEl.value = getTodayDateString();
+                };
+                window.deleteTransaction = (id) => {
+                    if (confirm('آیا از حذف این تراکنش مطمئن هستید؟')) {
+                        const dateOfDeleted = transactions.find(t => t.id === id)?.date;
+                        transactions = transactions.filter(t => t.id !== id);
+                        saveToLocalStorage();
+                        renderForDate(dateOfDeleted || datePickerEl.value);
+                    }
+                };
+                const saveToLocalStorage = () => localStorage.setItem('transactions', JSON.stringify(transactions));
+
+                // --- IMPORT/EXPORT LOGIC ---
+                const handleJsonExport = () => {
+                    if (transactions.length === 0) return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
+                    const dataStr = JSON.stringify({ transactions, installments }, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `financial_data_${new Date().toISOString().split('T')[0]}.json`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                };
+                const handleTelegramExport = () => {
+                    if (transactions.length === 0) return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
+                    const reportHtml = createReportHtml();
+                    
+                    exportTelegramBtn.disabled = true;
+                    exportTelegramBtn.textContent = 'در حال ارسال...';
+                    
+                    fetch('/api/send-report', { // This now points to the Vercel function
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            htmlContent: reportHtml,
+                            fileName: `financial_report_${new Date().toLocaleDateString('fa-IR').replace(/\//g, '-')}.html`
+                        }),
+                    })
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        return response.json();
+                    })
+                    .then(data => alert('گزارش با موفقیت به تلگرام ارسال شد!'))
+                    .catch(error => {
+                        console.error('Error sending report:', error);
+                        alert('خطا در ارسال گزارش به تلگرام.');
+                    })
+                    .finally(() => {
+                        exportTelegramBtn.disabled = false;
+                        exportTelegramBtn.textContent = 'ارسال گزارش به تلگرام';
+                    });
+                };
+                function createReportHtml() {
+                    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                    const netProfit = totalIncome - totalExpense;
+                    const dates = transactions.map(t => new Date(t.date));
+                    const firstDate = new Date(Math.min.apply(null, dates));
+                    const lastDate = new Date(Math.max.apply(null, dates));
+                    const reportDateRange = transactions.length > 0 ? `${formatDate(firstDate.toISOString().split('T')[0])} - ${formatDate(lastDate.toISOString().split('T')[0])}` : 'N/A';
+                    const expenseByCategory = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + t.amount;
+                        return acc;
+                    }, {});
+                    const dailyData = {};
+                    for (let i = 13; i >= 0; i--) {
+                        const d = new Date();
+                        d.setDate(d.getDate() - i);
+                        const dateStr = d.toISOString().split('T')[0];
+                        dailyData[dateStr] = { income: 0, expense: 0, label: formatDate(dateStr, { month: 'short', day: 'numeric' }) };
+                    }
+                    transactions.forEach(t => {
+                        if (dailyData[t.date]) dailyData[t.date][t.type] += t.amount;
+                    });
+                    
+                    return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>گزارش مالی</title><script src="https://cdn.tailwindcss.com"><\/script><script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:'Vazirmatn',sans-serif;background-color:#f3f4f6}.card{background-color:white;border-radius:.75rem;box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);padding:1.5rem}.income{color:#16a34a}.expense{color:#dc2626}<\/style></head><body class="p-4 md:p-8"><div class="max-w-5xl mx-auto space-y-8"><header class="text-center"><h1 class="text-4xl font-bold text-gray-800">گزارش جامع مالی</h1><p class="text-gray-500 mt-2">تاریخ گزارش: ${new Date().toLocaleDateString('fa-IR')}</p><p class="text-gray-500">بازه زمانی تراکنش‌ها: ${reportDateRange}</p></header><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل درآمد</h3><p class="text-3xl font-bold income mt-2">${formatCurrency(totalIncome)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل هزینه</h3><p class="text-3xl font-bold expense mt-2">${formatCurrency(totalExpense)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">سود/زیان خالص</h3><p class="text-3xl font-bold ${netProfit >= 0 ? 'income' : 'expense'} mt-2">${formatCurrency(netProfit)}</p></div></div><div class="card"><h2 class="text-xl font-bold mb-4 text-center">تحلیل گرافیکی</h2><div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center"><div class="lg:col-span-3"><h3 class="font-semibold text-center mb-2 text-gray-700">درآمد و هزینه (۱۴ روز گذشته)</h3><canvas id="barChart"></canvas></div><div class="lg:col-span-2"><h3 class="font-semibold text-center mb-2 text-gray-700">دسته‌بندی هزینه‌ها</h3><canvas id="pieChart" style="max-height:300px;margin:auto"></canvas></div></div></div><div class="card"><h2 class="text-2xl font-bold mb-4">لیست کامل تراکنش‌ها</h2><div class="overflow-x-auto"><table class="w-full text-sm text-right text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">تاریخ</th><th scope="col" class="px-6 py-3">نوع</th><th scope="col" class="px-6 py-3">دسته/شرح</th><th scope="col" class="px-6 py-3">ساعت</th><th scope="col" class="px-6 py-3">مبلغ</th></tr></thead><tbody>${transactions.sort((a,b)=>new Date(b.date)-new Date(a.date)||b.createdAt-a.createdAt).map(t=>`<tr class="bg-white border-b hover:bg-gray-50"><td class="px-6 py-4">${new Date(t.date).toLocaleDateString("fa-IR")}</td><td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-semibold ${t.type==="income"?"bg-green-100 text-green-800":"bg-red-100 text-red-800"}">${t.type==="income"?"درآمد":"هزینه"}</span></td><td class="px-6 py-4 font-medium text-gray-900">${t.description||t.category}</td><td class="px-6 py-4 text-gray-600">${t.time||"--"}</td><td class="px-6 py-4 font-semibold ${t.type==="income"?"income":"expense"}">${formatCurrency(t.amount)}</td></tr>`).join("")}</tbody></table></div></div></div><script>const formatCurrencyJS=num=>new Intl.NumberFormat("fa-IR").format(num);new Chart(document.getElementById("barChart"),{type:"bar",data:{labels:Object.values(${JSON.stringify(dailyData)}).map(d=>d.label),datasets:[{label:"درآمد",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.income),backgroundColor:"rgba(34, 197, 94, 0.7)",borderRadius:4},{label:"هزینه",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.expense),backgroundColor:"rgba(239, 68, 68, 0.7)",borderRadius:4}]},options:{responsive:!0,scales:{y:{ticks:{callback:v=>formatCurrencyJS(v)}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});new Chart(document.getElementById("pieChart"),{type:"pie",data:{labels:${JSON.stringify(Object.keys(expenseByCategory))},datasets:[{data:${JSON.stringify(Object.values(expenseByCategory))},backgroundColor:["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#10b981","#06b6d4","#3b82f6"],hoverOffset:4}]},options:{responsive:!0,plugins:{legend:{position:"bottom"},tooltip:{callbacks:{label:c=>c.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});<\/script></body></html>`;
+                }
+
+                const handleImport = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                             if (confirm('هشدار: تمام داده‌های فعلی پاک شده و داده‌های جدید جایگزین می‌شوند. آیا ادامه می‌دهید؟')) {
+                                transactions = data.transactions || [];
+                                installments = data.installments || defaultInstallments;
+                                saveToLocalStorage();
+                                saveAndRenderInstallments();
+                                datePickerEl.value = getTodayDateString();
+                                renderForDate(datePickerEl.value);
+                                alert('داده‌ها با موفقیت وارد شدند.');
+                            }
+                        } catch (error) {
+                            alert(`خطا در ورود داده‌ها: ${error.message}`);
+                        } finally {
+                            event.target.value = null;
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+
+                // --- INITIALIZATION ---
+                const init = () => {
+                    currentDateEl.textContent = `امروز: ${new Date().toLocaleDateString('fa-IR')}`;
+                    datePickerEl.value = getTodayDateString();
+                    transactionForm.addEventListener('submit', handleFormSubmit);
+                    incomeBtn.addEventListener('click', () => setTransactionType('income'));
+                    expenseBtn.addEventListener('click', () => setTransactionType('expense'));
+                    cancelBtn.addEventListener('click', resetForm);
+                    datePickerEl.addEventListener('change', () => renderForDate(datePickerEl.value));
+                    exportJsonBtn.addEventListener('click', handleJsonExport);
+                    exportTelegramBtn.addEventListener('click', handleTelegramExport);
+                    importBtn.addEventListener('click', () => importFileInput.click());
+                    importFileInput.addEventListener('change', handleImport);
+                    setTransactionType('income');
+                    renderForDate(datePickerEl.value);
+                    saveAndRenderInstallments();
+                };
+                init();
+            }
+        });
+    </script>
+</body>
+</html>
+
