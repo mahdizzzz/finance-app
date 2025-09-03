@@ -621,7 +621,6 @@
                     URL.revokeObjectURL(url);
                 };
                 const handleTelegramExport = () => {
-                    if (transactions.length === 0) return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
                     const reportHtml = createReportHtml();
                     
                     exportTelegramBtn.disabled = true;
@@ -649,31 +648,48 @@
                         exportTelegramBtn.textContent = 'ارسال گزارش به تلگرام';
                     });
                 };
+                
+                // --- THIS FUNCTION IS UPDATED ---
                 function createReportHtml() {
-                    const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                    // Define the 14-day date range
+                    const today = new Date();
+                    const fourteenDaysAgo = new Date();
+                    fourteenDaysAgo.setDate(today.getDate() - 13);
+                    today.setHours(23, 59, 59, 999);
+                    fourteenDaysAgo.setHours(0, 0, 0, 0);
+
+                    // Filter transactions for this period
+                    const recentTransactions = transactions.filter(t => {
+                        const transactionDate = new Date(t.date);
+                        return transactionDate >= fourteenDaysAgo && transactionDate <= today;
+                    });
+                    
+                    // All calculations are now based on recentTransactions
+                    const totalIncome = recentTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                    const totalExpense = recentTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
                     const netProfit = totalIncome - totalExpense;
-                    const dates = transactions.map(t => new Date(t.date));
-                    const firstDate = new Date(Math.min.apply(null, dates));
-                    const lastDate = new Date(Math.max.apply(null, dates));
-                    const reportDateRange = transactions.length > 0 ? `${formatDate(firstDate.toISOString().split('T')[0])} - ${formatDate(lastDate.toISOString().split('T')[0])}` : 'N/A';
-                    const expenseByCategory = transactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+                    
+                    const reportDateRange = `${formatDate(fourteenDaysAgo.toISOString().split('T')[0])} - ${formatDate(today.toISOString().split('T')[0])}`;
+                    
+                    const expenseByCategory = recentTransactions.filter(t => t.type === 'expense').reduce((acc, t) => {
                         acc[t.category] = (acc[t.category] || 0) + t.amount;
                         return acc;
                     }, {});
+                    
                     const dailyData = {};
-                    for (let i = 13; i >= 0; i--) {
+                    for (let i = 13; i >= 0; i--) { // Consistent 14-day loop
                         const d = new Date();
                         d.setDate(d.getDate() - i);
                         const dateStr = d.toISOString().split('T')[0];
                         dailyData[dateStr] = { income: 0, expense: 0, label: formatDate(dateStr, { month: 'short', day: 'numeric' }) };
                     }
-                    transactions.forEach(t => {
+                    recentTransactions.forEach(t => {
                         if (dailyData[t.date]) dailyData[t.date][t.type] += t.amount;
                     });
                     
-                    return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>گزارش مالی</title><script src="https://cdn.tailwindcss.com"><\/script><script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:'Vazirmatn',sans-serif;background-color:#f3f4f6}.card{background-color:white;border-radius:.75rem;box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);padding:1.5rem}.income{color:#16a34a}.expense{color:#dc2626}<\/style></head><body class="p-4 md:p-8"><div class="max-w-5xl mx-auto space-y-8"><header class="text-center"><h1 class="text-4xl font-bold text-gray-800">گزارش جامع مالی</h1><p class="text-gray-500 mt-2">تاریخ گزارش: ${new Date().toLocaleDateString('fa-IR')}</p><p class="text-gray-500">بازه زمانی تراکنش‌ها: ${reportDateRange}</p></header><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل درآمد</h3><p class="text-3xl font-bold income mt-2">${formatCurrency(totalIncome)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل هزینه</h3><p class="text-3xl font-bold expense mt-2">${formatCurrency(totalExpense)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">سود/زیان خالص</h3><p class="text-3xl font-bold ${netProfit >= 0 ? 'income' : 'expense'} mt-2">${formatCurrency(netProfit)}</p></div></div><div class="card"><h2 class="text-xl font-bold mb-4 text-center">تحلیل گرافیکی</h2><div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center"><div class="lg:col-span-3"><h3 class="font-semibold text-center mb-2 text-gray-700">درآمد و هزینه (۱۴ روز گذشته)</h3><canvas id="barChart"></canvas></div><div class="lg:col-span-2"><h3 class="font-semibold text-center mb-2 text-gray-700">دسته‌بندی هزینه‌ها</h3><canvas id="pieChart" style="max-height:300px;margin:auto"></canvas></div></div></div><div class="card"><h2 class="text-2xl font-bold mb-4">لیست کامل تراکنش‌ها</h2><div class="overflow-x-auto"><table class="w-full text-sm text-right text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">تاریخ</th><th scope="col" class="px-6 py-3">نوع</th><th scope="col" class="px-6 py-3">دسته/شرح</th><th scope="col" class="px-6 py-3">ساعت</th><th scope="col" class="px-6 py-3">مبلغ</th></tr></thead><tbody>${transactions.sort((a,b)=>new Date(b.date)-new Date(a.date)||b.createdAt-a.createdAt).map(t=>`<tr class="bg-white border-b hover:bg-gray-50"><td class="px-6 py-4">${new Date(t.date).toLocaleDateString("fa-IR")}</td><td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-semibold ${t.type==="income"?"bg-green-100 text-green-800":"bg-red-100 text-red-800"}">${t.type==="income"?"درآمد":"هزینه"}</span></td><td class="px-6 py-4 font-medium text-gray-900">${t.description||t.category}</td><td class="px-6 py-4 text-gray-600">${t.time||"--"}</td><td class="px-6 py-4 font-semibold ${t.type==="income"?"income":"expense"}">${formatCurrency(t.amount)}</td></tr>`).join("")}</tbody></table></div></div></div><script>const formatCurrencyJS=num=>new Intl.NumberFormat("fa-IR").format(num);new Chart(document.getElementById("barChart"),{type:"bar",data:{labels:Object.values(${JSON.stringify(dailyData)}).map(d=>d.label),datasets:[{label:"درآمد",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.income),backgroundColor:"rgba(34, 197, 94, 0.7)",borderRadius:4},{label:"هزینه",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.expense),backgroundColor:"rgba(239, 68, 68, 0.7)",borderRadius:4}]},options:{responsive:!0,scales:{y:{ticks:{callback:v=>formatCurrencyJS(v)}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});new Chart(document.getElementById("pieChart"),{type:"pie",data:{labels:${JSON.stringify(Object.keys(expenseByCategory))},datasets:[{data:${JSON.stringify(Object.values(expenseByCategory))},backgroundColor:["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#10b981","#06b6d4","#3b82f6"],hoverOffset:4}]},options:{responsive:!0,plugins:{legend:{position:"bottom"},tooltip:{callbacks:{label:c=>c.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});<\/script></body></html>`;
+                    return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>گزارش مالی ۱۴ روز گذشته</title><script src="https://cdn.tailwindcss.com"><\/script><script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:'Vazirmatn',sans-serif;background-color:#f3f4f6}.card{background-color:white;border-radius:.75rem;box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);padding:1.5rem}.income{color:#16a34a}.expense{color:#dc2626}<\/style></head><body class="p-4 md:p-8"><div class="max-w-5xl mx-auto space-y-8"><header class="text-center"><h1 class="text-4xl font-bold text-gray-800">گزارش مالی ۱۴ روز گذشته</h1><p class="text-gray-500 mt-2">تاریخ گزارش: ${new Date().toLocaleDateString('fa-IR')}</p><p class="text-gray-500">بازه زمانی: ${reportDateRange}</p></header><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل درآمد</h3><p class="text-3xl font-bold income mt-2">${formatCurrency(totalIncome)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل هزینه</h3><p class="text-3xl font-bold expense mt-2">${formatCurrency(totalExpense)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">سود/زیان خالص</h3><p class="text-3xl font-bold ${netProfit >= 0 ? 'income' : 'expense'} mt-2">${formatCurrency(netProfit)}</p></div></div><div class="card"><h2 class="text-xl font-bold mb-4 text-center">تحلیل گرافیکی</h2><div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center"><div class="lg:col-span-3"><h3 class="font-semibold text-center mb-2 text-gray-700">درآمد و هزینه (۱۴ روز گذشته)</h3><canvas id="barChart"></canvas></div><div class="lg:col-span-2"><h3 class="font-semibold text-center mb-2 text-gray-700">دسته‌بندی هزینه‌ها</h3><canvas id="pieChart" style="max-height:300px;margin:auto"></canvas></div></div></div><div class="card"><h2 class="text-2xl font-bold mb-4">لیست تراکنش‌های ۱۴ روز گذشته</h2><div class="overflow-x-auto">${recentTransactions.length > 0 ? `<table class="w-full text-sm text-right text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">تاریخ</th><th scope="col" class="px-6 py-3">نوع</th><th scope="col" class="px-6 py-3">دسته/شرح</th><th scope="col" class="px-6 py-3">ساعت</th><th scope="col" class="px-6 py-3">مبلغ</th></tr></thead><tbody>${recentTransactions.sort((a,b)=>new Date(b.date)-new Date(a.date)||b.createdAt-a.createdAt).map(t=>`<tr class="bg-white border-b hover:bg-gray-50"><td class="px-6 py-4">${new Date(t.date).toLocaleDateString("fa-IR")}</td><td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-semibold ${t.type==="income"?"bg-green-100 text-green-800":"bg-red-100 text-red-800"}">${t.type==="income"?"درآمد":"هزینه"}</span></td><td class="px-6 py-4 font-medium text-gray-900">${t.description||t.category}</td><td class="px-6 py-4 text-gray-600">${t.time||"--"}</td><td class="px-6 py-4 font-semibold ${t.type==="income"?"income":"expense"}">${formatCurrency(t.amount)}</td></tr>`).join("")}</tbody></table>` : '<p class="text-center text-gray-500 py-4">هیچ تراکنشی در ۱۴ روز گذشته ثبت نشده است.</p>'}</div></div></div><script>const formatCurrencyJS=num=>new Intl.NumberFormat("fa-IR").format(num);new Chart(document.getElementById("barChart"),{type:"bar",data:{labels:Object.values(${JSON.stringify(dailyData)}).map(d=>d.label),datasets:[{label:"درآمد",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.income),backgroundColor:"rgba(34, 197, 94, 0.7)",borderRadius:4},{label:"هزینه",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.expense),backgroundColor:"rgba(239, 68, 68, 0.7)",borderRadius:4}]},options:{responsive:!0,scales:{y:{ticks:{callback:v=>formatCurrencyJS(v)}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});new Chart(document.getElementById("pieChart"),{type:"pie",data:{labels:${JSON.stringify(Object.keys(expenseByCategory))},datasets:[{data:${JSON.stringify(Object.values(expenseByCategory))},backgroundColor:["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#10b981","#06b6d4","#3b82f6"],hoverOffset:4}]},options:{responsive:!0,plugins:{legend:{position:"bottom"},tooltip:{callbacks:{label:c=>c.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});<\/script></body></html>`;
                 }
+
 
                 const handleImport = (event) => {
                     const file = event.target.files[0];
