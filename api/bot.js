@@ -1,16 +1,16 @@
-// /api/bot.js - Serverless Function for Telegram Bot Webhook
+// /api/bot.js - Serverless Function for Telegram Bot Webhook with Gemini AI
 
-// Import necessary libraries
 import { Telegraf } from 'telegraf';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // --- CONFIGURATION ---
-// These will be read from Vercel's Environment Variables
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const FIREBASE_USER_ID = process.env.FIREBASE_USER_ID;
 
-// Firebase Admin SDK Configuration
-// We need to parse the JSON string from the environment variable
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_CONFIG);
@@ -18,7 +18,9 @@ try {
   console.error('Error parsing FIREBASE_ADMIN_CONFIG:', e.message);
 }
 
-// Initialize Firebase Admin (only if not already initialized)
+// --- INITIALIZE SERVICES ---
+
+// Initialize Firebase Admin
 if (!getApps().length) {
   try {
     initializeApp({
@@ -29,107 +31,209 @@ if (!getApps().length) {
   }
 }
 
+// Initialize Gemini
+let genAI, geminiModel;
+if (GEMINI_API_KEY) {
+  genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+} else {
+  console.error("Gemini API Key is not set.");
+}
+
 const db = getFirestore();
 const bot = new Telegraf(BOT_TOKEN);
 
-// --- BOT LOGIC ---
+// --- SECURITY CHECK ---
+// Middleware to ensure only you can use this bot
+bot.use((ctx, next) => {
+  const userId = ctx.from?.id.toString();
+  if (userId === CHAT_ID) {
+    return next(); // You are authorized
+  }
+  console.warn(`Unauthorized access attempt by user ID: ${userId}`);
+  return ctx.reply('شما مجاز به استفاده از این ربات نیستید.');
+});
 
-// Helper function to parse the message
-// Format: [نوع] [مبلغ] [شرح]
-// Example: هزینه 50000 قهوه
-const parseTransaction = (text) => {
-    const parts = text.split(' ');
-    if (parts.length < 2) return null;
+// --- HELPER FUNCTIONS ---
 
-    let type;
-    const typeKeyword = parts[0].toLowerCase();
-    if (typeKeyword === 'هزینه' || typeKeyword === 'خرج' || typeKeyword === 'e') {
-        type = 'expense';
-    } else if (typeKeyword === 'درآمد' || typeKeyword === 'سود' || typeKeyword === 'i') {
-        type = 'income';
-    } else {
-        return null; // Invalid type
-    }
+const formatCurrency = (num) => new Intl.NumberFormat('fa-IR').format(num);
 
-    const amount = parseInt(parts[1], 10);
-    if (isNaN(amount) || amount <= 0) return null; // Invalid amount
-
-    const description = parts.length > 2 ? parts.slice(2).join(' ') : 'ثبت شده توسط ربات';
-    const category = parts.length > 2 ? 'سایر' : (type === 'income' ? 'سایر' : 'سایر'); // Default category
-
-    return { type, amount, description, category };
+// Get today's date range for Firestore queries
+const getTodayDateRange = () => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  return {
+    start: Timestamp.fromDate(today),
+    end: Timestamp.fromDate(tomorrow)
+  };
 };
 
-// Set up the bot command listeners
-bot.start((ctx) => ctx.reply('سلام! این ربات مدیریت مالی شخصی شماست. برای ثبت تراکنش، پیامی مانند "هزینه 50000 قهوه" ارسال کنید.'));
+// Get this month's date range for Firestore queries
+const getThisMonthDateRange = () => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return {
+        start: Timestamp.fromDate(startOfMonth),
+        end: Timestamp.fromDate(endOfMonth)
+    };
+};
+
+
+// --- GEMINI AI LOGIC ---
+
+// This is the core prompt for Gemini
+const GEMINI_PROMPT = `
+شما یک دستیار هوشمند برای تحلیل پیام‌های مالی به زبان فارسی هستید.
+وظیفه شما این است که متن پیام کاربر را دریافت کنید و آن را به یکی از دو ساختار JSON زیر تبدیل کنید:
+
+1.  اگر پیام، یک **ثبت تراکنش** (هزینه یا درآمد) بود:
+    {
+      "intent": "add_transaction",
+      "transaction": {
+        "type": "expense" | "income",
+        "amount": [number] (مبلغ به تومان),
+        "description": "[string] (شرح تراکنش)"
+      }
+    }
+    مثال:
+    - ورودی: "امروز یه قهوه خریدم ۵۰ تومن" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 50000, "description":"قهوه"}}
+    - ورودی: "۱۵۰ هزار تومن بابت فلش گرفتم" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش"}}
+
+2.  اگر پیام، یک **درخواست گزارش** (پرسش در مورد موجودی یا خرج) بود:
+    {
+      "intent": "get_report",
+      "report": {
+        "type": "expense" | "income" | "all",
+        "period": "today" | "month" | "all_time"
+      }
+    }
+    مثال:
+    - ورودی: "امروز چقدر خرج کردم؟" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
+    - ورودی: "میزان خرج این ماهم رو بگو" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"month"}}
+    - ورودی: "درآمد امروزم چقدر بود؟" -> خروجی: {"intent":"get_report", "report": {"type":"income", "period":"today"}}
+
+اگر پیام قابل درک نبود یا به این دو دسته تعلق نداشت، فقط یک JSON خالی برگردان: {}
+`;
+
+async function getGeminiAnalysis(text) {
+  if (!geminiModel) {
+      throw new Error("Gemini Model is not initialized.");
+  }
+  try {
+    const chat = geminiModel.startChat({
+        history: [{ role: "user", parts: [{ text: GEMINI_PROMPT }] }],
+        generationConfig: { maxOutputTokens: 100, responseMimeType: "application/json" },
+    });
+    const result = await chat.sendMessage(text);
+    const response = await result.response;
+    const jsonText = response.text();
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error("Error communicating with Gemini:", error);
+    return null;
+  }
+}
+
+// --- DATABASE LOGIC ---
+
+async function addTransaction(transactionData) {
+  const newTransaction = {
+      ...transactionData,
+      category: 'سایر', // Default category for bot entries
+      date: new Date().toISOString().split('T')[0], // Today's date
+      time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
+      createdAt: Timestamp.now(), // Use server timestamp
+  };
+
+  const docRef = await db.collection('users').doc(FIREBASE_USER_ID).collection('transactions').add(newTransaction);
+  return newTransaction;
+}
+
+async function getReport(reportRequest) {
+    let { type, period } = reportRequest;
+    let queryRef = db.collection('users').doc(FIREBASE_USER_ID).collection('transactions');
+    
+    let dateRange;
+    let periodText = "";
+    if (period === 'today') {
+        dateRange = getTodayDateRange();
+        queryRef = queryRef.where('createdAt', '>=', dateRange.start).where('createdAt', '<', dateRange.end);
+        periodText = "امروز";
+    } else if (period === 'month') {
+        dateRange = getThisMonthDateRange();
+        queryRef = queryRef.where('createdAt', '>=', dateRange.start).where('createdAt', '<=', dateRange.end);
+        periodText = "این ماه";
+    }
+    // 'all_time' needs no date filter
+
+    let totalAmount = 0;
+    let typeText = "";
+
+    if (type === 'expense') {
+        queryRef = queryRef.where('type', '==', 'expense');
+        typeText = "خرج";
+    } else if (type === 'income') {
+        queryRef = queryRef.where('type', '==', 'income');
+        typeText = "درآمد";
+    } else {
+        typeText = "تراز مالی";
+    }
+
+    const snapshot = await queryRef.get();
+
+    snapshot.forEach(doc => {
+        const data = doc.data();
+        if (type === 'all') {
+            totalAmount += (data.type === 'income' ? data.amount : -data.amount);
+        } else {
+            totalAmount += data.amount;
+        }
+    });
+
+    return `مجموع ${typeText} شما در ${periodText}: ${formatCurrency(totalAmount)} تومان`;
+}
+
+// --- BOT HANDLERS ---
+
+bot.start((ctx) => ctx.reply('سلام! من ربات هوشمند مالی شما هستم.\nمی‌توانید بنویسید: "امروز ۵۰ تومن قهوه خریدم" تا آن را ثبت کنم.\nیا بپرسید: "این ماه چقدر خرج کردم؟" تا به شما گزارش دهم.'));
 
 bot.on('text', async (ctx) => {
     const text = ctx.message.text;
-    const userId = ctx.message.from.id.toString(); // Use Telegram User ID as the identifier
-    
-    // --- IMPORTANT SECURITY CHECK ---
-    // Compare the sender's ID with your configured CHAT_ID to ensure only you can add data.
-    if (userId !== process.env.TELEGRAM_CHAT_ID) {
-        console.warn(`Unauthorized access attempt by user ID: ${userId}`);
-        return ctx.reply('شما مجاز به استفاده از این ربات نیستید.');
-    }
-
-    const transaction = parseTransaction(text);
-
-    if (!transaction) {
-        return ctx.reply('فرمت پیام اشتباه است. لطفاً از این فرمت استفاده کنید: [نوع] [مبلغ] [شرح]\nمثال: هزینه 50000 قهوه');
-    }
+    await ctx.replyWithChatAction('typing'); // Show "typing..." status
 
     try {
-        // Prepare data for Firestore
-        const newTransaction = {
-            ...transaction,
-            date: new Date().toISOString().split('T')[0], // Today's date
-            time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
-            createdAt: new Date(), // Server timestamp
-        };
+        const analysis = await getGeminiAnalysis(text);
 
-        // Add to Firestore database under your user ID
-        // NOTE: This assumes your Firestore security rules are set up to allow this,
-        // or that the admin SDK bypasses them.
-        // We'll use the Telegram User ID to find the correct user document
-        // For simplicity, we'll find the user by their chat ID.
-        // A better approach would be to link Firebase Auth UID with Telegram ID,
-        // but for a personal bot, we can find the user via an assumed "telegramId" field.
+        if (analysis && analysis.intent === 'add_transaction') {
+            const newTransaction = await addTransaction(analysis.transaction);
+            const typeText = newTransaction.type === 'income' ? 'درآمد' : 'هزینه';
+            return ctx.reply(`✅ ثبت شد:\n${typeText} به مبلغ ${formatCurrency(newTransaction.amount)} تومان (${newTransaction.description})`);
         
-        // This is a simplification: We assume the Firestore collection 'users'
-        // has documents where the document ID IS the Firebase Auth UID.
-        // We can't easily get the Firebase Auth UID from a Telegram ID without a lookup.
+        } else if (analysis && analysis.intent === 'get_report') {
+            const reportMessage = await getReport(analysis.report);
+            return ctx.reply(reportMessage);
         
-        // Let's change the logic: We'll add a "telegramUserId" field to your user doc in Firebase.
-        // For now, let's assume your Firebase Auth UID is stored as an env var.
-        
-        const FIREBASE_USER_ID = process.env.FIREBASE_USER_ID;
-        if (!FIREBASE_USER_ID) {
-             return ctx.reply('خطای سرور: شناسه کاربر Firebase تنظیم نشده است.');
+        } else {
+            return ctx.reply('متوجه پیام شما نشدم. لطفاً دوباره تلاش کنید (مثلاً: "هزینه 10000 تست" یا "خرج امروز؟")');
         }
 
-        const docRef = await db.collection('users').doc(FIREBASE_USER_ID).collection('transactions').add(newTransaction);
-        
-        console.log(`Transaction added with ID: ${docRef.id} for user ${FIREBASE_USER_ID}`);
-        
-        const typeText = transaction.type === 'income' ? 'درآمد' : 'هزینه';
-        return ctx.reply(`✅ ثبت شد:\n${typeText} به مبلغ ${transaction.amount} تومان (${transaction.description})`);
-
     } catch (error) {
-        console.error('Error writing to Firestore:', error);
-        return ctx.reply('خطایی در ثبت تراکنش در پایگاه‌داده رخ داد.');
+        console.error('Main Bot Error:', error);
+        return ctx.reply('خطایی در سرور رخ داد. لطفاً بعداً تلاش کنید.');
     }
 });
 
 // --- VERCEL HANDLER ---
-// This part connects the bot to Vercel's serverless environment
 export default async (req, res) => {
     try {
         await bot.handleUpdate(req.body);
         res.status(200).send('OK');
     } catch (e) {
-        console.error('Error handling update:', e);
+        console.error('Error handling update:', e.message);
         res.status(500).send('Error');
     }
 };
+
