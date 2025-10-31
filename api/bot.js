@@ -83,45 +83,41 @@ const getThisMonthDateRange = () => {
 
 // --- FIX: Updated and stricter prompt ---
 const GEMINI_PROMPT = `
-شما یک دستیار هوشمند تحلیلگر متن مالی به زبان فارسی هستید. وظیفه شما فقط و فقط خروجی دادن JSON است.
+شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
+وظیفه شما فقط و فقط خروجی دادن JSON است.
 متن ورودی کاربر را بخوانید و آن را به یکی از 3 ساختار JSON زیر تبدیل کنید.
 
-1.  اگر پیام، یک **ثبت تراکنش** (هزینه یا درآمد) بود:
+1.  **ثبت تراکنش**:
     {
       "intent": "add_transaction",
-      "transaction": {
-        "type": "expense" | "income",
-        "amount": [number] (مبلغ به تومان),
-        "description": "[string] (شرح تراکنش)"
-      }
+      "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]" }
     }
-    مثال:
+    مثال ها:
     - ورودی: "امروز یه قهوه خریدم ۵۰ تومن" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 50000, "description":"قهوه"}}
     - ورودی: "۱۵۰ هزار تومن بابت فلش گرفتم" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش"}}
 
-2.  اگر پیام، یک **درخواست گزارش** (پرسش در مورد موجودی یا خرج) بود:
+2.  **درخواست گزارش**:
     {
       "intent": "get_report",
-      "report": {
-        "type": "expense" | "income" | "all",
-        "period": "today" | "month" | "all_time"
-      }
+      "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }
     }
-    مثال:
+    مثال ها:
     - ورودی: "امروز چقدر خرج کردم؟" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
     - ورودی: "میزان خرج این ماهم رو بگو" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"month"}}
 
-3.  اگر پیام قابل درک نبود یا به این دو دسته تعلق نداشت (مثلا "سلام"، "تست" و ...):
+3.  **نامفهوم**:
     {
       "intent": "unrecognized"
     }
-    مثال:
+    مثال ها:
     - ورودی: "سلام خوبی؟" -> خروجی: {"intent":"unrecognized"}
+    - ورودی: "تست" -> خروجی: {"intent":"unrecognized"}
+    - ورودی: "asdf" -> خروجی: {"intent":"unrecognized"}
 
-**مهم: تحت هیچ شرایطی چیزی غیر از فرمت JSON خروجی ندهید.**
+**مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این سه ساختار JSON باشد. هیچ متن اضافه ای نفرستید.**
 `;
 
-// --- FIX: Improved error handling in getGeminiAnalysis ---
+// --- FIX: Changed to generateContent and using systemInstruction ---
 async function getGeminiAnalysis(text) {
   if (!geminiModel) {
     throw new Error("Gemini Model is not initialized.");
@@ -130,11 +126,14 @@ async function getGeminiAnalysis(text) {
   let jsonText = ""; // Initialize empty string
   try {
     // 1. Try to get response from Gemini
-    const chat = geminiModel.startChat({
-        history: [{ role: "user", parts: [{ text: GEMINI_PROMPT }] }],
+    const result = await geminiModel.generateContent({
+        contents: [{ role: "user", parts: [{ text: text }] }],
+        systemInstruction: {
+            parts: [{ text: GEMINI_PROMPT }]
+        },
         generationConfig: { maxOutputTokens: 100, responseMimeType: "application/json" },
     });
-    const result = await chat.sendMessage(text);
+    
     const response = await result.response;
     jsonText = response.text();
 
