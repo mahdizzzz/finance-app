@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مدیریت مالی شخصی</title>
+    <title>مدیریت مالی شخصی (نسخه ابری)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,17 +31,24 @@
             font-weight: 600;
             transition: all 0.2s ease-in-out;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .btn-primary { background-color: #3b82f6; color: white; }
-        .btn-primary:hover { background-color: #2563eb; }
+        .btn-primary:hover:not(:disabled) { background-color: #2563eb; }
         .btn-secondary { background-color: #6b7280; color: white; }
-        .btn-secondary:hover { background-color: #4b5563; }
+        .btn-secondary:hover:not(:disabled) { background-color: #4b5563; }
         .btn-success { background-color: #22c55e; color: white; }
-        .btn-success:hover { background-color: #16a34a; }
+        .btn-success:hover:not(:disabled) { background-color: #16a34a; }
         .btn-danger { background-color: #ef4444; color: white; }
-        .btn-danger:hover { background-color: #dc2626; }
+        .btn-danger:hover:not(:disabled) { background-color: #dc2626; }
         .btn-edit { background-color: #f97316; color: white; }
-        .btn-edit:hover { background-color: #ea580c; }
+        .btn-edit:hover:not(:disabled) { background-color: #ea580c; }
         .date-btn {
             background-color: #e5e7eb;
             color: #374151;
@@ -52,7 +59,6 @@
             background-color: #3b82f6;
             color: white;
         }
-
         .form-input {
             width: 100%;
             padding: 10px;
@@ -67,46 +73,52 @@
         }
         .income { color: #16a34a; }
         .expense { color: #dc2626; }
-
-        .type-toggle {
-            display: flex;
-            border: 1px solid #d1d5db;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .type-toggle button {
-            flex: 1;
-            padding: 10px;
-            border: none;
-            background-color: #fff;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-weight: 500;
-        }
-        .type-toggle button.active {
-            color: white;
-        }
+        .type-toggle { display: flex; border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; }
+        .type-toggle button { flex: 1; padding: 10px; border: none; background-color: #fff; cursor: pointer; transition: background-color 0.3s; font-weight: 500; }
+        .type-toggle button.active { color: white; }
         .type-toggle button.active.income-btn { background-color: #22c55e; }
         .type-toggle button.active.expense-btn { background-color: #ef4444; }
-        
-        .due-soon {
-            color: #ef4444;
-            font-weight: 600;
+        .due-soon { color: #ef4444; font-weight: 600; }
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
         }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="antialiased">
 
-    <!-- Login Modal -->
-    <div id="login-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
-        <div class="bg-white p-8 rounded-2xl shadow-xl text-center w-full max-w-sm mx-4">
-            <h2 class="text-2xl font-bold mb-4 text-gray-800">ورود</h2>
-            <p class="text-gray-600 mb-6">برای دسترسی به برنامه، لطفاً رمز عبور را وارد کنید.</p>
-            <form id="login-form">
-                <input type="password" id="password-input" class="form-input text-center tracking-[.5em]" placeholder="••••" autofocus>
-                <p id="login-error" class="text-red-500 text-sm mt-2 hidden">رمز عبور اشتباه است.</p>
-                <button type="submit" class="btn btn-primary w-full mt-6">ورود</button>
-            </form>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex flex-col items-center justify-center z-50">
+        <div class="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-blue-500"></div>
+        <p class="text-white text-lg mt-4">در حال بارگذاری...</p>
+    </div>
+
+    <!-- Auth Container -->
+    <div id="auth-container" class="hidden">
+        <div class="min-h-screen flex items-center justify-center">
+            <div class="card w-full max-w-sm mx-4">
+                <h2 id="auth-title" class="text-2xl font-bold mb-6 text-gray-800 text-center">ورود به حساب کاربری</h2>
+                <form id="auth-form" class="space-y-4">
+                    <div>
+                        <label for="auth-email" class="block mb-2 font-semibold text-gray-700">ایمیل</label>
+                        <input type="email" id="auth-email" class="form-input" required>
+                    </div>
+                    <div>
+                        <label for="auth-password" class="block mb-2 font-semibold text-gray-700">رمز عبور</label>
+                        <input type="password" id="auth-password" class="form-input" required minlength="6">
+                    </div>
+                    <p id="auth-error" class="text-red-500 text-sm hidden">خطایی رخ داد.</p>
+                    <div class="flex flex-col gap-4 pt-2">
+                        <button type="submit" id="auth-submit-btn" class="btn btn-primary w-full">ورود</button>
+                        <button type="button" id="auth-toggle-btn" class="text-sm text-blue-600 hover:underline">ثبت‌نام نکرده‌اید؟ ساخت حساب</button>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -139,10 +151,11 @@
     <div id="app-container" class="hidden">
         <div class="container mx-auto p-4 md:p-8 max-w-7xl">
             
-            <header class="text-center mb-8">
-                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">مدیریت مالی شخصی</h1>
+            <header class="text-center mb-8 relative">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-800">مدیریت مالی شخصی (ابری)</h1>
                 <p id="current-date" class="text-sm text-gray-500 mt-2"></p>
                 <p class="text-gray-500 mt-2">درآمد و هزینه‌های خود را به سادگی ثبت و تحلیل کنید.</p>
+                <button id="logout-btn" class="btn btn-danger absolute top-0 left-0 text-sm py-2 px-3">خروج</button>
             </header>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -155,7 +168,7 @@
                              <button id="add-installment-btn" class="text-blue-600 hover:text-blue-800 text-sm font-semibold">افزودن قسط</button>
                         </div>
                         <ul id="installments-list" class="space-y-2 text-sm max-h-48 overflow-y-auto pr-1">
-                           <!-- Installments will be rendered here -->
+                           <p class="text-gray-500 text-center py-4">در حال بارگذاری اقساط...</p>
                         </ul>
                         <!-- Installment Summary -->
                         <div id="installment-summary" class="mt-4 pt-4 border-t text-sm space-y-2">
@@ -227,7 +240,10 @@
                     <div class="card">
                         <h2 class="text-xl font-bold mb-4 border-b pb-2">مدیریت داده‌ها</h2>
                         <div class="space-y-3">
-                             <button id="export-telegram-btn" class="btn btn-success w-full">ارسال گزارش به تلگرام</button>
+                             <button id="export-telegram-btn" class="btn btn-success w-full">
+                                 <span class="loading-spinner hidden mr-2"></span>
+                                 ارسال گزارش به تلگرام
+                             </button>
                              <button id="export-json-btn" class="btn btn-primary w-full">دانلود پشتیبان (JSON)</button>
                              <button id="import-btn" class="btn btn-secondary w-full">ورود داده (JSON)</button>
                              <input type="file" id="import-file-input" class="hidden" accept=".json">
@@ -239,7 +255,7 @@
                     <div class="card">
                         <h2 id="transaction-list-title" class="text-xl font-bold mb-4 border-b pb-2">لیست تراکنش‌ها</h2>
                         <div id="transaction-list" class="space-y-3 max-h-[30rem] overflow-y-auto pr-2">
-                             <p class="text-gray-500 text-center py-4">روزی را برای نمایش انتخاب کنید.</p>
+                             <p class="text-gray-500 text-center py-4">در حال بارگذاری تراکنش‌ها...</p>
                         </div>
                     </div>
 
@@ -252,490 +268,690 @@
         </div>
     </div>
     
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // --- LOGIN LOGIC ---
-            const loginModal = document.getElementById('login-modal');
-            const loginForm = document.getElementById('login-form');
-            const passwordInput = document.getElementById('password-input');
-            const loginError = document.getElementById('login-error');
-            const appContainer = document.getElementById('app-container');
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { 
+            getAuth, 
+            onAuthStateChanged,
+            createUserWithEmailAndPassword,
+            signInWithEmailAndPassword,
+            signOut
+        } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { 
+            getFirestore,
+            doc,
+            setDoc,
+            addDoc,
+            deleteDoc,
+            collection,
+            query,
+            where,
+            onSnapshot,
+            serverTimestamp,
+            orderBy
+        } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
-            if (sessionStorage.getItem('isLoggedIn') === 'true') {
+        // =======================================================================
+        // --- قدم مهم: پیکربندی Firebase ---
+        // =======================================================================
+        // !!!!!!!!!!! خطای شما به دلیل این بخش است !!!!!!!!!!!
+        //
+        // اطلاعاتی را که در "فاز اول" از سایت Firebase کپی کردید،
+        // (همان متنی که برای من فرستادید)
+        // به طور کامل در اینجا جایگزین کنید.
+        
+        const firebaseConfig = {
+          apiKey: "AIzaSyBBp53jNpqaNHJnjfuF0uSEuhL4Pn9iq98",
+          authDomain: "my-finance-app-973ba.firebaseapp.com",
+          projectId: "my-finance-app-973ba",
+          storageBucket: "my-finance-app-973ba.firebasestorage.app",
+          messagingSenderId: "782327402969",
+          appId: "1:782327402969:web:74ae72049276344ae209c8"
+        };
+        // =======================================================================
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- GLOBAL STATE ---
+        let currentUserId = null;
+        let transactions = [];
+        let installments = [];
+        let unsubscribeTransactions = () => {};
+        let unsubscribeInstallments = () => {};
+        let myChart;
+
+        // --- DOM Elements ---
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const authContainer = document.getElementById('auth-container');
+        const appContainer = document.getElementById('app-container');
+        const authForm = document.getElementById('auth-form');
+        const authEmailInput = document.getElementById('auth-email');
+        const authPasswordInput = document.getElementById('auth-password');
+        const authSubmitBtn = document.getElementById('auth-submit-btn');
+        const authToggleBtn = document.getElementById('auth-toggle-btn');
+        const authTitle = document.getElementById('auth-title');
+        const authError = document.getElementById('auth-error');
+        const logoutBtn = document.getElementById('logout-btn');
+        
+        // App Elements
+        const transactionForm = document.getElementById('transaction-form');
+        const formTitle = document.getElementById('form-title');
+        const descriptionInput = document.getElementById('description');
+        const amountInput = document.getElementById('amount');
+        const datePickerEl = document.getElementById('date-picker');
+        const transactionList = document.getElementById('transaction-list');
+        const transactionListTitle = document.getElementById('transaction-list-title');
+        const totalIncomeEl = document.getElementById('total-income');
+        const totalExpenseEl = document.getElementById('total-expense');
+        const netProfitEl = document.getElementById('net-profit');
+        const chartCanvas = document.getElementById('myChart');
+        const incomeBtn = document.getElementById('income-btn');
+        const expenseBtn = document.getElementById('expense-btn');
+        const categoryWrapper = document.getElementById('category-wrapper');
+        const categorySelect = document.getElementById('category');
+        const transactionIdInput = document.getElementById('transaction-id');
+        const submitBtn = document.getElementById('submit-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+        const summaryDateDisplay = document.getElementById('summary-date-display');
+        const recordedDaysList = document.getElementById('recorded-days-list');
+        const exportJsonBtn = document.getElementById('export-json-btn');
+        const exportTelegramBtn = document.getElementById('export-telegram-btn');
+        const importBtn = document.getElementById('import-btn');
+        const importFileInput = document.getElementById('import-file-input');
+        const currentDateEl = document.getElementById('current-date');
+        
+        // Installment Elements
+        const installmentsList = document.getElementById('installments-list');
+        const addInstallmentBtn = document.getElementById('add-installment-btn');
+        const installmentModal = document.getElementById('installment-modal');
+        const installmentForm = document.getElementById('installment-form');
+        const cancelInstallmentBtn = document.getElementById('cancel-installment-btn');
+        const totalInstallmentsEl = document.getElementById('total-installments');
+        const dailyInstallmentsEl = document.getElementById('daily-installments');
+
+        // App Config
+        let selectedType = 'income';
+        let editMode = false;
+        let isRegisterMode = false;
+        const incomeCategories = ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'];
+        const expenseCategories = ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'سایر'];
+        
+        // --- UTILITY FUNCTIONS ---
+        const formatCurrency = (num) => new Intl.NumberFormat('fa-IR').format(num) + ' تومان';
+        const formatDate = (dateStr, options = { year: 'numeric', month: 'long', day: 'numeric' }) => {
+            if (!dateStr) return '';
+            const [year, month, day] = dateStr.split('-').map(Number);
+            return new Date(year, month - 1, day).toLocaleDateString('fa-IR', options);
+        };
+        const getTodayDateString = () => new Date().toISOString().split('T')[0];
+        const getPersianDay = () => parseInt(new Date().toLocaleDateString('fa-IR-u-nu-latn').split('/')[2], 10);
+        
+        // --- AUTHENTICATION LOGIC ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in
+                currentUserId = user.uid;
                 showApp();
+                runAppLogic(currentUserId); // <-- FIX: Renamed function call
             } else {
-                loginModal.style.display = 'flex';
+                // User is signed out
+                currentUserId = null;
+                showLogin();
+                // Clear all listeners and data
+                if (typeof unsubscribeTransactions === 'function') unsubscribeTransactions();
+                if (typeof unsubscribeInstallments === 'function') unsubscribeInstallments();
+                transactions = [];
+                installments = [];
             }
+            loadingOverlay.style.display = 'none';
+        });
 
-            loginForm.addEventListener('submit', (e) => {
-                e.preventDefault();
-                if (passwordInput.value === '4006') {
-                    sessionStorage.setItem('isLoggedIn', 'true');
-                    showApp();
+        function showApp() {
+            authContainer.classList.add('hidden');
+            appContainer.classList.remove('hidden');
+            // <-- FIX: Removed problematic initializeApp() call
+        }
+
+        function showLogin() {
+            appContainer.classList.add('hidden');
+            authContainer.classList.remove('hidden');
+        }
+
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = authEmailInput.value;
+            const password = authPasswordInput.value;
+            authError.classList.add('hidden');
+            authSubmitBtn.disabled = true;
+
+            try {
+                if (isRegisterMode) {
+                    // Register
+                    await createUserWithEmailAndPassword(auth, email, password);
                 } else {
-                    loginError.classList.remove('hidden');
-                    passwordInput.value = '';
-                    passwordInput.focus();
+                    // Login
+                    await signInWithEmailAndPassword(auth, email, password);
+                }
+                // onAuthStateChanged will handle showing the app
+            } catch (error) {
+                console.error("Auth Error:", error.message);
+                authError.textContent = getPersianAuthError(error.code);
+                authError.classList.remove('hidden');
+            } finally {
+                authSubmitBtn.disabled = false;
+            }
+        });
+
+        authToggleBtn.addEventListener('click', () => {
+            isRegisterMode = !isRegisterMode;
+            if (isRegisterMode) {
+                authTitle.textContent = 'ساخت حساب کاربری';
+                authSubmitBtn.textContent = 'ثبت‌نام';
+                authToggleBtn.textContent = 'حساب دارید؟ ورود';
+            } else {
+                authTitle.textContent = 'ورود به حساب کاربری';
+                authSubmitBtn.textContent = 'ورود';
+                authToggleBtn.textContent = 'ثبت‌نام نکرده‌اید؟ ساخت حساب';
+            }
+        });
+
+        logoutBtn.addEventListener('click', () => {
+            if (confirm('آیا برای خروج مطمئن هستید؟')) {
+                signOut(auth);
+            }
+        });
+        
+        function getPersianAuthError(errorCode) {
+            switch(errorCode) {
+                case 'auth/wrong-password': return 'رمز عبور اشتباه است.';
+                case 'auth/user-not-found': return 'کاربری با این ایمیل یافت نشد.';
+                case 'auth/invalid-email': return 'ایمیل وارد شده معتبر نیست.';
+                case 'auth/email-already-in-use': return 'این ایمیل قبلاً استفاده شده است.';
+                case 'auth/weak-password': return 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
+                default: return 'خطایی رخ داد. لطفاً دوباره تلاش کنید.';
+            }
+        }
+
+        // --- MAIN APP LOGIC ---
+        // <-- FIX: Renamed function to avoid conflict with imported initializeApp
+        function runAppLogic(userId) { 
+            
+            // --- FIREBASE DATA LISTENERS (REAL-TIME SYNC) ---
+            
+            // Listener for Transactions
+            const transCol = collection(db, 'users', userId, 'transactions');
+            const qTrans = query(transCol, orderBy('date', 'desc'));
+            unsubscribeTransactions = onSnapshot(qTrans, (snapshot) => {
+                transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                // Convert Firestore Timestamps back to JS Dates (if needed)
+                transactions.forEach(t => {
+                    if (t.createdAt && t.createdAt.toDate) {
+                        t.createdAt = t.createdAt.toDate().getTime();
+                    }
+                });
+                renderForDate(datePickerEl.value);
+            }, (error) => {
+                console.error("Error fetching transactions: ", error);
+                transactionList.innerHTML = `<p class="text-red-500 text-center py-4">خطا در بارگذاری تراکنش‌ها.</p>`;
+            });
+
+            // Listener for Installments
+            const instCol = collection(db, 'users', userId, 'installments');
+            const qInst = query(instCol, orderBy('day'));
+            unsubscribeInstallments = onSnapshot(qInst, (snapshot) => {
+                installments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderInstallments();
+            }, (error) => {
+                console.error("Error fetching installments: ", error);
+                installmentsList.innerHTML = `<p class="text-red-500 text-center py-4">خطا در بارگذاری اقساط.</p>`;
+            });
+
+            // --- INSTALLMENT LOGIC ---
+            function updateInstallmentSummary() {
+                const totalAmount = installments.reduce((sum, inst) => sum + inst.amount, 0);
+                const dailyAmount = totalAmount > 0 ? totalAmount / 30 : 0;
+                totalInstallmentsEl.textContent = formatCurrency(totalAmount);
+                dailyInstallmentsEl.textContent = formatCurrency(Math.round(dailyAmount));
+            }
+            function renderInstallments() {
+                installmentsList.innerHTML = '';
+                const currentDay = getPersianDay();
+                if (installments.length === 0) {
+                    installmentsList.innerHTML = `<p class="text-gray-500 text-center text-xs">قسطی ثبت نشده است.</p>`;
+                } else {
+                    installments.forEach(inst => {
+                        const li = document.createElement('li');
+                        li.className = 'flex justify-between items-center p-2 rounded-md hover:bg-gray-50';
+                        const isDueSoon = currentDay >= (inst.day - 5) && currentDay <= inst.day;
+                        const dueClass = isDueSoon ? 'due-soon' : '';
+                        li.innerHTML = `
+                            <div class="flex-grow ${dueClass}">
+                                <span>${inst.name}</span>
+                                <span class="text-gray-500 text-xs">(هر ماه ${inst.day}م)</span>
+                            </div>
+                            <span class="font-semibold w-28 text-left ${dueClass}">${formatCurrency(inst.amount)}</span>
+                            <button class="delete-installment-btn text-red-400 hover:text-red-600 mr-2 text-xs" data-id="${inst.id}">حذف</button>
+                        `;
+                        installmentsList.appendChild(li);
+                    });
+                    document.querySelectorAll('.delete-installment-btn').forEach(button => {
+                        button.addEventListener('click', async (e) => {
+                            const idToDelete = e.target.dataset.id;
+                            if (confirm('آیا از حذف این قسط مطمئن هستید؟')) {
+                                try {
+                                    await deleteDoc(doc(db, 'users', userId, 'installments', idToDelete));
+                                    // No need to manually update, onSnapshot will handle it.
+                                } catch (error) {
+                                    console.error("Error deleting installment: ", error);
+                                    alert("خطا در حذف قسط.");
+                                }
+                            }
+                        });
+                    });
+                }
+                updateInstallmentSummary();
+            }
+            addInstallmentBtn.addEventListener('click', () => installmentModal.classList.remove('hidden'));
+            cancelInstallmentBtn.addEventListener('click', () => {
+                installmentModal.classList.add('hidden');
+                installmentForm.reset();
+            });
+            installmentForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const newInstallment = {
+                    name: document.getElementById('installment-name').value,
+                    day: parseInt(document.getElementById('installment-day').value, 10),
+                    amount: parseInt(document.getElementById('installment-amount').value, 10)
+                };
+                try {
+                    await addDoc(collection(db, 'users', userId, 'installments'), newInstallment);
+                    // No need to manually update, onSnapshot will handle it.
+                    installmentForm.reset();
+                    installmentModal.classList.add('hidden');
+                } catch (error) {
+                    console.error("Error adding installment: ", error);
+                    alert("خطا در افزودن قسط.");
                 }
             });
 
-            function showApp() {
-                loginModal.style.display = 'none';
-                appContainer.classList.remove('hidden');
-                initializeApp();
-            }
-
-            // --- MAIN APP LOGIC ---
-            function initializeApp() {
-                // DOM Elements
-                const transactionForm = document.getElementById('transaction-form');
-                const formTitle = document.getElementById('form-title');
-                const descriptionInput = document.getElementById('description');
-                const amountInput = document.getElementById('amount');
-                const datePickerEl = document.getElementById('date-picker');
-                const transactionList = document.getElementById('transaction-list');
-                const transactionListTitle = document.getElementById('transaction-list-title');
-                const totalIncomeEl = document.getElementById('total-income');
-                const totalExpenseEl = document.getElementById('total-expense');
-                const netProfitEl = document.getElementById('net-profit');
-                const chartCanvas = document.getElementById('myChart');
-                const incomeBtn = document.getElementById('income-btn');
-                const expenseBtn = document.getElementById('expense-btn');
-                const categoryWrapper = document.getElementById('category-wrapper');
-                const categorySelect = document.getElementById('category');
-                const transactionIdInput = document.getElementById('transaction-id');
-                const submitBtn = document.getElementById('submit-btn');
-                const cancelBtn = document.getElementById('cancel-btn');
-                const summaryDateDisplay = document.getElementById('summary-date-display');
-                const recordedDaysList = document.getElementById('recorded-days-list');
-                const exportJsonBtn = document.getElementById('export-json-btn');
-                const exportTelegramBtn = document.getElementById('export-telegram-btn');
-                const importBtn = document.getElementById('import-btn');
-                const importFileInput = document.getElementById('import-file-input');
-                const currentDateEl = document.getElementById('current-date');
-                
-                // Installment Elements
-                const installmentsList = document.getElementById('installments-list');
-                const addInstallmentBtn = document.getElementById('add-installment-btn');
-                const installmentModal = document.getElementById('installment-modal');
-                const installmentForm = document.getElementById('installment-form');
-                const cancelInstallmentBtn = document.getElementById('cancel-installment-btn');
-                const totalInstallmentsEl = document.getElementById('total-installments');
-                const dailyInstallmentsEl = document.getElementById('daily-installments');
-
-                // App State
-                let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
-                let myChart;
-                let selectedType = 'income';
-                let editMode = false;
-                const defaultInstallments = [
-                    { id: 1, name: 'بانک ملت', day: 15, amount: 2000000 },
-                    { id: 2, name: 'بانک پاسارگاد (ویپاد)', day: 16, amount: 4700000 },
-                    { id: 3, name: 'دیجی‌پی یک', day: 19, amount: 1250000 },
-                    { id: 4, name: 'دیجی‌پی دو', day: 26, amount: 1400000 },
-                    { id: 5, name: 'دندانپزشکی', day: 29, amount: 1700000 },
-                    { id: 6, name: 'اسنپ شاپ', day: 30, amount: 500000 }
-                ];
-                let installments = JSON.parse(localStorage.getItem('installments')) || defaultInstallments;
-                
-                const incomeCategories = ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'];
-                const expenseCategories = ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'سایر'];
-
-                // --- UTILITY FUNCTIONS ---
-                const formatCurrency = (num) => new Intl.NumberFormat('fa-IR').format(num) + ' تومان';
-                const formatDate = (dateStr, options = { year: 'numeric', month: 'long', day: 'numeric' }) => {
-                    if (!dateStr) return '';
-                    const [year, month, day] = dateStr.split('-').map(Number);
-                    return new Date(year, month - 1, day).toLocaleDateString('fa-IR', options);
-                };
-                const getTodayDateString = () => new Date().toISOString().split('T')[0];
-                const getPersianDay = () => parseInt(new Date().toLocaleDateString('fa-IR-u-nu-latn').split('/')[2], 10);
-
-                // --- INSTALLMENT LOGIC ---
-                function updateInstallmentSummary() {
-                    const totalAmount = installments.reduce((sum, inst) => sum + inst.amount, 0);
-                    const dailyAmount = totalAmount > 0 ? totalAmount / 30 : 0;
-                    totalInstallmentsEl.textContent = formatCurrency(totalAmount);
-                    dailyInstallmentsEl.textContent = formatCurrency(Math.round(dailyAmount));
-                }
-                function renderInstallments() {
-                    installmentsList.innerHTML = '';
-                    const currentDay = getPersianDay();
-                    if (installments.length === 0) {
-                        installmentsList.innerHTML = `<p class="text-gray-500 text-center text-xs">قسطی ثبت نشده است.</p>`;
-                    } else {
-                        installments.sort((a, b) => a.day - b.day).forEach(inst => {
-                            const li = document.createElement('li');
-                            li.className = 'flex justify-between items-center p-2 rounded-md hover:bg-gray-50';
-                            const isDueSoon = currentDay >= (inst.day - 5) && currentDay <= inst.day;
-                            const dueClass = isDueSoon ? 'due-soon' : '';
-                            li.innerHTML = `
-                                <div class="flex-grow ${dueClass}">
-                                    <span>${inst.name}</span>
-                                    <span class="text-gray-500 text-xs">(هر ماه ${inst.day}م)</span>
-                                </div>
-                                <span class="font-semibold w-28 text-left ${dueClass}">${formatCurrency(inst.amount)}</span>
-                                <button class="delete-installment-btn text-red-400 hover:text-red-600 mr-2 text-xs" data-id="${inst.id}">حذف</button>
-                            `;
-                            installmentsList.appendChild(li);
-                        });
-                        document.querySelectorAll('.delete-installment-btn').forEach(button => {
-                            button.addEventListener('click', (e) => {
-                                const idToDelete = parseInt(e.target.dataset.id, 10);
-                                if (confirm('آیا از حذف این قسط مطمئن هستید؟')) {
-                                    installments = installments.filter(inst => inst.id !== idToDelete);
-                                    saveAndRenderInstallments();
-                                }
-                            });
-                        });
-                    }
-                    updateInstallmentSummary();
-                }
-                function saveAndRenderInstallments() {
-                    localStorage.setItem('installments', JSON.stringify(installments));
-                    renderInstallments();
-                }
-                addInstallmentBtn.addEventListener('click', () => installmentModal.classList.remove('hidden'));
-                cancelInstallmentBtn.addEventListener('click', () => {
-                    installmentModal.classList.add('hidden');
-                    installmentForm.reset();
+            // --- CATEGORY & TYPE HANDLING ---
+            const updateCategoryOptions = (type) => {
+                categorySelect.innerHTML = '';
+                const categories = type === 'income' ? incomeCategories : expenseCategories;
+                categories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    categorySelect.appendChild(option);
                 });
-                installmentForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    installments.push({
-                        id: Date.now(),
-                        name: document.getElementById('installment-name').value,
-                        day: parseInt(document.getElementById('installment-day').value, 10),
-                        amount: parseInt(document.getElementById('installment-amount').value, 10)
+            };
+            const setTransactionType = (type) => {
+                selectedType = type;
+                incomeBtn.classList.toggle('active', type === 'income');
+                expenseBtn.classList.toggle('active', type === 'expense');
+                categoryWrapper.style.display = 'block';
+                updateCategoryOptions(type);
+            };
+
+            // --- UI & RENDER FUNCTIONS ---
+            const renderForDate = (date) => {
+                renderTransactions(date);
+                renderRecordedDays();
+            };
+            const renderTransactions = (date) => {
+                const dailyTransactions = transactions
+                    .filter(t => t.date === date)
+                    .sort((a, b) => b.createdAt - a.createdAt);
+                    
+                transactionList.innerHTML = '';
+                transactionListTitle.textContent = `لیست تراکنش‌ها (${formatDate(date)})`;
+                
+                if (dailyTransactions.length === 0) {
+                    transactionList.innerHTML = `<p class="text-gray-500 text-center py-4">هنوز تراکنشی برای این روز ثبت نشده است.</p>`;
+                } else {
+                    dailyTransactions.forEach(t => {
+                        const item = document.createElement('div');
+                        const amountClass = t.type === 'income' ? 'income' : 'expense';
+                        const sign = t.type === 'income' ? '+' : '-';
+                        const mainDescription = t.description || t.category;
+                        const subDescription = t.description && t.category ? `<p class="text-sm text-gray-500">${t.category}</p>` : '';
+                        const timeHTML = t.time ? `<span class="text-xs text-gray-400 mr-2 font-normal">(${t.time})</span>` : '';
+                        
+                        item.className = `flex items-center p-3 rounded-lg ${t.type === 'income' ? 'bg-green-50' : 'bg-red-50'}`;
+                        item.innerHTML = `
+                            <div class="flex-grow">
+                                <div class="flex items-baseline">
+                                    <p class="font-semibold text-gray-800">${mainDescription}</p>
+                                    ${timeHTML}
+                                </div>
+                                ${subDescription}
+                            </div>
+                            <div class="text-left ml-4">
+                                <p class="text-md ${amountClass} font-bold">${sign}${formatCurrency(t.amount)}</p>
+                            </div>
+                            <div class="flex gap-2">
+                                <button class="btn btn-edit text-xs py-1 px-2" data-id="${t.id}">ویرایش</button>
+                                <button class="btn btn-danger text-xs py-1 px-2" data-id="${t.id}">حذف</button>
+                            </div>
+                        `;
+                        
+                        item.querySelector('.btn-edit').addEventListener('click', () => startEditTransaction(t.id));
+                        item.querySelector('.btn-danger').addEventListener('click', () => deleteTransaction(t.id));
+                        
+                        transactionList.appendChild(item);
                     });
-                    saveAndRenderInstallments();
-                    installmentForm.reset();
-                    installmentModal.classList.add('hidden');
+                }
+                updateSummary(date);
+                updateChart();
+            };
+            const updateSummary = (date) => {
+                const dailyTransactions = transactions.filter(t => t.date === date);
+                const income = dailyTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+                const expense = dailyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+                const netProfit = income - expense;
+                summaryDateDisplay.textContent = formatDate(date);
+                totalIncomeEl.textContent = formatCurrency(income);
+                totalExpenseEl.textContent = formatCurrency(expense);
+                netProfitEl.textContent = formatCurrency(netProfit);
+                netProfitEl.className = 'font-bold text-xl'; // Reset classes
+                if (netProfit > 0) netProfitEl.classList.add('income');
+                else if (netProfit < 0) netProfitEl.classList.add('expense');
+                else netProfitEl.classList.add('text-gray-800');
+            };
+            const renderRecordedDays = () => {
+                const uniqueDates = [...new Set(transactions.map(t => t.date))].sort((a, b) => new Date(b) - new Date(a));
+                recordedDaysList.innerHTML = '';
+                if (uniqueDates.length === 0) {
+                    recordedDaysList.innerHTML = '<p class="text-gray-500 text-sm">هنوز روزی ثبت نشده است.</p>';
+                    return;
+                }
+                uniqueDates.forEach(date => {
+                    const button = document.createElement('button');
+                    button.className = 'btn date-btn';
+                    button.textContent = formatDate(date, { day: 'numeric', month: 'short' });
+                    if (date === datePickerEl.value) {
+                        button.classList.add('active');
+                    }
+                    button.onclick = () => {
+                        datePickerEl.value = date;
+                        renderForDate(date);
+                    };
+                    recordedDaysList.appendChild(button);
                 });
-
-                // --- CATEGORY & TYPE HANDLING ---
-                const updateCategoryOptions = (type) => {
-                    categorySelect.innerHTML = '';
-                    const categories = type === 'income' ? incomeCategories : expenseCategories;
-                    categories.forEach(cat => {
-                        const option = document.createElement('option');
-                        option.value = cat;
-                        option.textContent = cat;
-                        categorySelect.appendChild(option);
-                    });
+            };
+            const updateChart = () => {
+                const dates = [];
+                const netProfits = [];
+                for (let i = 13; i >= 0; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    const dateStr = d.toISOString().split('T')[0];
+                    const dailyNet = transactions.filter(t => t.date === dateStr).reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
+                    dates.push(formatDate(dateStr, { weekday: 'short', day: 'numeric' }));
+                    netProfits.push(dailyNet);
+                }
+                const chartData = {
+                    labels: dates,
+                    datasets: [{
+                        label: 'سود/زیان خالص',
+                        data: netProfits,
+                        backgroundColor: netProfits.map(p => p >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
+                        borderColor: netProfits.map(p => p >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'),
+                        borderWidth: 1,
+                        borderRadius: 5,
+                    }]
                 };
-                const setTransactionType = (type) => {
-                    selectedType = type;
-                    incomeBtn.classList.toggle('active', type === 'income');
-                    expenseBtn.classList.toggle('active', type === 'expense');
-                    categoryWrapper.style.display = 'block';
-                    updateCategoryOptions(type);
-                };
-
-                // --- UI & RENDER FUNCTIONS ---
-                const renderForDate = (date) => {
-                    renderTransactions(date);
-                    renderRecordedDays();
-                };
-                const renderTransactions = (date) => {
-                    const dailyTransactions = transactions.filter(t => t.date === date).sort((a, b) => b.createdAt - a.createdAt);
-                    transactionList.innerHTML = '';
-                    transactionListTitle.textContent = `لیست تراکنش‌ها (${formatDate(date)})`;
-                    if (dailyTransactions.length === 0) {
-                        transactionList.innerHTML = `<p class="text-gray-500 text-center py-4">هنوز تراکنشی برای این روز ثبت نشده است.</p>`;
-                    } else {
-                        dailyTransactions.forEach(t => {
-                            const item = document.createElement('div');
-                            const amountClass = t.type === 'income' ? 'income' : 'expense';
-                            const sign = t.type === 'income' ? '+' : '-';
-                            const mainDescription = t.description || t.category;
-                            const subDescription = t.description && t.category ? `<p class="text-sm text-gray-500">${t.category}</p>` : '';
-                            const timeHTML = t.time ? `<span class="text-xs text-gray-400 mr-2 font-normal">(${t.time})</span>` : '';
-                            item.className = `flex items-center p-3 rounded-lg ${t.type === 'income' ? 'bg-green-50' : 'bg-red-50'}`;
-                            item.innerHTML = `
-                                <div class="flex-grow">
-                                    <div class="flex items-baseline">
-                                        <p class="font-semibold text-gray-800">${mainDescription}</p>
-                                        ${timeHTML}
-                                    </div>
-                                    ${subDescription}
-                                </div>
-                                <div class="text-left ml-4">
-                                    <p class="text-md ${amountClass} font-bold">${sign}${formatCurrency(t.amount)}</p>
-                                </div>
-                                <div class="flex gap-2">
-                                    <button onclick="startEditTransaction('${t.id}')" class="btn btn-edit text-xs py-1 px-2">ویرایش</button>
-                                    <button onclick="deleteTransaction('${t.id}')" class="btn btn-danger text-xs py-1 px-2">حذف</button>
-                                </div>
-                            `;
-                            transactionList.appendChild(item);
-                        });
-                    }
-                    updateSummary(date);
-                    updateChart();
-                };
-                const updateSummary = (date) => {
-                    const dailyTransactions = transactions.filter(t => t.date === date);
-                    const income = dailyTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-                    const expense = dailyTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
-                    const netProfit = income - expense;
-                    summaryDateDisplay.textContent = formatDate(date);
-                    totalIncomeEl.textContent = formatCurrency(income);
-                    totalExpenseEl.textContent = formatCurrency(expense);
-                    netProfitEl.textContent = formatCurrency(netProfit);
-                    netProfitEl.className = 'font-bold text-xl'; // Reset classes
-                    if (netProfit > 0) netProfitEl.classList.add('income');
-                    else if (netProfit < 0) netProfitEl.classList.add('expense');
-                    else netProfitEl.classList.add('text-gray-800');
-                };
-                const renderRecordedDays = () => {
-                    const uniqueDates = [...new Set(transactions.map(t => t.date))].sort((a, b) => new Date(b) - new Date(a));
-                    recordedDaysList.innerHTML = '';
-                    if (uniqueDates.length === 0) {
-                        recordedDaysList.innerHTML = '<p class="text-gray-500 text-sm">هنوز روزی ثبت نشده است.</p>';
-                        return;
-                    }
-                    uniqueDates.forEach(date => {
-                        const button = document.createElement('button');
-                        button.className = 'btn date-btn';
-                        button.textContent = formatDate(date, { day: 'numeric', month: 'short' });
-                        if (date === datePickerEl.value) {
-                            button.classList.add('active');
+                if (myChart) {
+                    myChart.data = chartData;
+                    myChart.update();
+                } else {
+                    myChart = new Chart(chartCanvas, {
+                        type: 'bar',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            scales: { y: { ticks: { callback: (value) => new Intl.NumberFormat('fa-IR').format(value) } } },
+                            plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => formatCurrency(context.parsed.y) } } }
                         }
-                        button.onclick = () => {
-                            datePickerEl.value = date;
-                            renderForDate(date);
-                        };
-                        recordedDaysList.appendChild(button);
                     });
-                };
-                const updateChart = () => {
-                    const dates = [];
-                    const netProfits = [];
-                    for (let i = 13; i >= 0; i--) {
-                        const d = new Date();
-                        d.setDate(d.getDate() - i);
-                        const dateStr = d.toISOString().split('T')[0];
-                        const dailyNet = transactions.filter(t => t.date === dateStr).reduce((acc, t) => acc + (t.type === 'income' ? t.amount : -t.amount), 0);
-                        dates.push(formatDate(dateStr, { weekday: 'short', day: 'numeric' }));
-                        netProfits.push(dailyNet);
-                    }
-                    const chartData = {
-                        labels: dates,
-                        datasets: [{
-                            label: 'سود/زیان خالص',
-                            data: netProfits,
-                            backgroundColor: netProfits.map(p => p >= 0 ? 'rgba(34, 197, 94, 0.6)' : 'rgba(239, 68, 68, 0.6)'),
-                            borderColor: netProfits.map(p => p >= 0 ? 'rgb(34, 197, 94)' : 'rgb(239, 68, 68)'),
-                            borderWidth: 1,
-                            borderRadius: 5,
-                        }]
-                    };
-                    if (myChart) {
-                        myChart.data = chartData;
-                        myChart.update();
-                    } else {
-                        myChart = new Chart(chartCanvas, {
-                            type: 'bar',
-                            data: chartData,
-                            options: {
-                                responsive: true,
-                                scales: { y: { ticks: { callback: (value) => new Intl.NumberFormat('fa-IR').format(value) } } },
-                                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (context) => formatCurrency(context.parsed.y) } } }
-                            }
-                        });
-                    }
-                };
+                }
+            };
 
-                // --- CRUD & FORM LOGIC ---
-                const handleFormSubmit = (e) => {
-                    e.preventDefault();
-                    if (!amountInput.value) return;
-                    const transactionData = {
-                        description: descriptionInput.value.trim(),
-                        amount: +amountInput.value,
-                        type: selectedType,
-                        category: categorySelect.value,
-                        date: datePickerEl.value,
-                    };
+            // --- CRUD & FORM LOGIC ---
+            const handleFormSubmit = async (e) => {
+                e.preventDefault();
+                if (!amountInput.value) return;
+                
+                const transactionData = {
+                    description: descriptionInput.value.trim(),
+                    amount: +amountInput.value,
+                    type: selectedType,
+                    category: categorySelect.value,
+                    date: datePickerEl.value,
+                };
+                
+                submitBtn.disabled = true;
+
+                try {
                     if (editMode) {
-                        const index = transactions.findIndex(t => t.id === transactionIdInput.value);
-                        if (index > -1) transactions[index] = { ...transactions[index], ...transactionData };
+                        // Update existing doc
+                        const docRef = doc(db, 'users', userId, 'transactions', transactionIdInput.value);
+                        await setDoc(docRef, transactionData, { merge: true });
                     } else {
-                        transactions.push({
+                        // Add new doc
+                        const dataWithTimestamp = {
                             ...transactionData,
-                            id: crypto.randomUUID(),
-                            createdAt: Date.now(),
+                            createdAt: serverTimestamp(), // Use server timestamp
                             time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
-                        });
+                        };
+                        await addDoc(collection(db, 'users', userId, 'transactions'), dataWithTimestamp);
                     }
-                    saveToLocalStorage();
-                    renderForDate(datePickerEl.value);
+                    // onSnapshot will handle the UI update
                     resetForm();
-                };
-                window.startEditTransaction = (id) => {
-                    const t = transactions.find(t => t.id === id);
-                    if (!t) return;
-                    editMode = true;
-                    transactionIdInput.value = t.id;
-                    descriptionInput.value = t.description;
-                    amountInput.value = t.amount;
-                    datePickerEl.value = t.date;
-                    setTransactionType(t.type);
-                    categorySelect.value = t.category;
-                    formTitle.textContent = 'ویرایش تراکنش';
-                    submitBtn.textContent = 'ذخیره تغییرات';
-                    cancelBtn.classList.remove('hidden');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                };
-                const resetForm = () => {
-                    editMode = false;
-                    transactionForm.reset();
-                    transactionIdInput.value = '';
-                    formTitle.textContent = 'ثبت تراکنش جدید';
-                    submitBtn.textContent = 'افزودن';
-                    cancelBtn.classList.add('hidden');
-                    setTransactionType('income');
-                    datePickerEl.value = getTodayDateString();
-                };
-                window.deleteTransaction = (id) => {
-                    if (confirm('آیا از حذف این تراکنش مطمئن هستید؟')) {
-                        const dateOfDeleted = transactions.find(t => t.id === id)?.date;
-                        transactions = transactions.filter(t => t.id !== id);
-                        saveToLocalStorage();
-                        renderForDate(dateOfDeleted || datePickerEl.value);
-                    }
-                };
-                const saveToLocalStorage = () => localStorage.setItem('transactions', JSON.stringify(transactions));
-
-                // --- IMPORT/EXPORT LOGIC ---
-                const handleJsonExport = () => {
-                    if (transactions.length === 0) return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
-                    const dataStr = JSON.stringify({ transactions, installments }, null, 2);
-                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-                    const url = URL.createObjectURL(dataBlob);
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.download = `financial_data_${new Date().toISOString().split('T')[0]}.json`;
-                    link.click();
-                    URL.revokeObjectURL(url);
-                };
-                const handleTelegramExport = () => {
-                    const reportHtml = createReportHtml();
-                    
-                    exportTelegramBtn.disabled = true;
-                    exportTelegramBtn.textContent = 'در حال ارسال...';
-                    
-                    fetch('/api/send-report', { // This now points to the Vercel function
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            htmlContent: reportHtml,
-                            fileName: `financial_report_${new Date().toLocaleDateString('fa-IR').replace(/\//g, '-')}.html`
-                        }),
-                    })
-                    .then(response => {
-                        if (!response.ok) throw new Error('Network response was not ok');
-                        return response.json();
-                    })
-                    .then(data => alert('گزارش با موفقیت به تلگرام ارسال شد!'))
-                    .catch(error => {
-                        console.error('Error sending report:', error);
-                        alert('خطا در ارسال گزارش به تلگرام.');
-                    })
-                    .finally(() => {
-                        exportTelegramBtn.disabled = false;
-                        exportTelegramBtn.textContent = 'ارسال گزارش به تلگرام';
-                    });
-                };
-                
-                // --- THIS FUNCTION IS UPDATED ---
-                function createReportHtml() {
-                    // Define the 14-day date range
-                    const today = new Date();
-                    const fourteenDaysAgo = new Date();
-                    fourteenDaysAgo.setDate(today.getDate() - 13);
-                    today.setHours(23, 59, 59, 999);
-                    fourteenDaysAgo.setHours(0, 0, 0, 0);
-
-                    // Filter transactions for this period
-                    const recentTransactions = transactions.filter(t => {
-                        const transactionDate = new Date(t.date);
-                        return transactionDate >= fourteenDaysAgo && transactionDate <= today;
-                    });
-                    
-                    // All calculations are now based on recentTransactions
-                    const totalIncome = recentTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                    const totalExpense = recentTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                    const netProfit = totalIncome - totalExpense;
-                    
-                    const reportDateRange = `${formatDate(fourteenDaysAgo.toISOString().split('T')[0])} - ${formatDate(today.toISOString().split('T')[0])}`;
-                    
-                    const expenseByCategory = recentTransactions.filter(t => t.type === 'expense').reduce((acc, t) => {
-                        acc[t.category] = (acc[t.category] || 0) + t.amount;
-                        return acc;
-                    }, {});
-                    
-                    const dailyData = {};
-                    for (let i = 13; i >= 0; i--) { // Consistent 14-day loop
-                        const d = new Date();
-                        d.setDate(d.getDate() - i);
-                        const dateStr = d.toISOString().split('T')[0];
-                        dailyData[dateStr] = { income: 0, expense: 0, label: formatDate(dateStr, { month: 'short', day: 'numeric' }) };
-                    }
-                    recentTransactions.forEach(t => {
-                        if (dailyData[t.date]) dailyData[t.date][t.type] += t.amount;
-                    });
-                    
-                    return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>گزارش مالی ۱۴ روز گذشته</title><script src="https://cdn.tailwindcss.com"><\/script><script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:'Vazirmatn',sans-serif;background-color:#f3f4f6}.card{background-color:white;border-radius:.75rem;box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);padding:1.5rem}.income{color:#16a34a}.expense{color:#dc2626}<\/style></head><body class="p-4 md:p-8"><div class="max-w-5xl mx-auto space-y-8"><header class="text-center"><h1 class="text-4xl font-bold text-gray-800">گزارش مالی ۱۴ روز گذشته</h1><p class="text-gray-500 mt-2">تاریخ گزارش: ${new Date().toLocaleDateString('fa-IR')}</p><p class="text-gray-500">بازه زمانی: ${reportDateRange}</p></header><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل درآمد</h3><p class="text-3xl font-bold income mt-2">${formatCurrency(totalIncome)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل هزینه</h3><p class="text-3xl font-bold expense mt-2">${formatCurrency(totalExpense)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">سود/زیان خالص</h3><p class="text-3xl font-bold ${netProfit >= 0 ? 'income' : 'expense'} mt-2">${formatCurrency(netProfit)}</p></div></div><div class="card"><h2 class="text-xl font-bold mb-4 text-center">تحلیل گرافیکی</h2><div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center"><div class="lg:col-span-3"><h3 class="font-semibold text-center mb-2 text-gray-700">درآمد و هزینه (۱۴ روز گذشته)</h3><canvas id="barChart"></canvas></div><div class="lg:col-span-2"><h3 class="font-semibold text-center mb-2 text-gray-700">دسته‌بندی هزینه‌ها</h3><canvas id="pieChart" style="max-height:300px;margin:auto"></canvas></div></div></div><div class="card"><h2 class="text-2xl font-bold mb-4">لیست تراکنش‌های ۱۴ روز گذشته</h2><div class="overflow-x-auto">${recentTransactions.length > 0 ? `<table class="w-full text-sm text-right text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">تاریخ</th><th scope="col" class="px-6 py-3">نوع</th><th scope="col" class="px-6 py-3">دسته/شرح</th><th scope="col" class="px-6 py-3">ساعت</th><th scope="col" class="px-6 py-3">مبلغ</th></tr></thead><tbody>${recentTransactions.sort((a,b)=>new Date(b.date)-new Date(a.date)||b.createdAt-a.createdAt).map(t=>`<tr class="bg-white border-b hover:bg-gray-50"><td class="px-6 py-4">${new Date(t.date).toLocaleDateString("fa-IR")}</td><td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-semibold ${t.type==="income"?"bg-green-100 text-green-800":"bg-red-100 text-red-800"}">${t.type==="income"?"درآمد":"هزینه"}</span></td><td class="px-6 py-4 font-medium text-gray-900">${t.description||t.category}</td><td class="px-6 py-4 text-gray-600">${t.time||"--"}</td><td class="px-6 py-4 font-semibold ${t.type==="income"?"income":"expense"}">${formatCurrency(t.amount)}</td></tr>`).join("")}</tbody></table>` : '<p class="text-center text-gray-500 py-4">هیچ تراکنشی در ۱۴ روز گذشته ثبت نشده است.</p>'}</div></div></div><script>const formatCurrencyJS=num=>new Intl.NumberFormat("fa-IR").format(num);new Chart(document.getElementById("barChart"),{type:"bar",data:{labels:Object.values(${JSON.stringify(dailyData)}).map(d=>d.label),datasets:[{label:"درآمد",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.income),backgroundColor:"rgba(34, 197, 94, 0.7)",borderRadius:4},{label:"هزینه",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.expense),backgroundColor:"rgba(239, 68, 68, 0.7)",borderRadius:4}]},options:{responsive:!0,scales:{y:{ticks:{callback:v=>formatCurrencyJS(v)}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});new Chart(document.getElementById("pieChart"),{type:"pie",data:{labels:${JSON.stringify(Object.keys(expenseByCategory))},datasets:[{data:${JSON.stringify(Object.values(expenseByCategory))},backgroundColor:["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#10b981","#06b6d4","#3b82f6"],hoverOffset:4}]},options:{responsive:!0,plugins:{legend:{position:"bottom"},tooltip:{callbacks:{label:c=>c.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});<\/script></body></html>`;
+                } catch (error) {
+                    console.error("Error saving transaction: ", error);
+                    alert("خطا در ذخیره تراکنش.");
+                } finally {
+                    submitBtn.disabled = false;
                 }
+            };
+            
+            window.startEditTransaction = (id) => {
+                const t = transactions.find(t => t.id === id);
+                if (!t) return;
+                editMode = true;
+                transactionIdInput.value = t.id;
+                descriptionInput.value = t.description;
+                amountInput.value = t.amount;
+                datePickerEl.value = t.date;
+                setTransactionType(t.type);
+                categorySelect.value = t.category;
+                formTitle.textContent = 'ویرایش تراکنش';
+                submitBtn.textContent = 'ذخیره تغییرات';
+                cancelBtn.classList.remove('hidden');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+            
+            const resetForm = () => {
+                editMode = false;
+                transactionForm.reset();
+                transactionIdInput.value = '';
+                formTitle.textContent = 'ثبت تراکنش جدید';
+                submitBtn.textContent = 'افزودن';
+                cancelBtn.classList.add('hidden');
+                setTransactionType('income');
+                datePickerEl.value = getTodayDateString();
+            };
+            
+            window.deleteTransaction = async (id) => {
+                if (confirm('آیا از حذف این تراکنش مطمئن هستید؟')) {
+                    try {
+                        await deleteDoc(doc(db, 'users', userId, 'transactions', id));
+                        // onSnapshot will handle the UI update
+                    } catch (error) {
+                        console.error("Error deleting transaction: ", error);
+                        alert("خطا در حذف تراکنش.");
+                    }
+                }
+            };
 
-
-                const handleImport = (event) => {
-                    const file = event.target.files[0];
-                    if (!file) return;
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const data = JSON.parse(e.target.result);
-                             if (confirm('هشدار: تمام داده‌های فعلی پاک شده و داده‌های جدید جایگزین می‌شوند. آیا ادامه می‌دهید؟')) {
-                                transactions = data.transactions || [];
-                                installments = data.installments || defaultInstallments;
-                                saveToLocalStorage();
-                                saveAndRenderInstallments();
-                                datePickerEl.value = getTodayDateString();
-                                renderForDate(datePickerEl.value);
-                                alert('داده‌ها با موفقیت وارد شدند.');
-                            }
-                        } catch (error) {
-                            alert(`خطا در ورود داده‌ها: ${error.message}`);
-                        } finally {
-                            event.target.value = null;
+            // --- IMPORT/EXPORT LOGIC ---
+            // Export remains local, as it's a backup FOR the user
+            const handleJsonExport = () => {
+                if (transactions.length === 0 && installments.length === 0) {
+                    return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
+                }
+                const dataStr = JSON.stringify({ transactions, installments }, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `firebase_backup_${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+            };
+            
+            // Import is now more complex, it needs to write to Firestore.
+            // This is a bulk write operation.
+            const handleImport = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (!data.transactions && !data.installments) {
+                            throw new Error("فایل معتبر نیست.");
                         }
-                    };
-                    reader.readAsText(file);
+                         if (confirm('هشدار: داده‌های موجود در این فایل به حساب ابری شما اضافه می‌شوند. (جایگزین نمی‌شوند). آیا ادامه می‌دهید؟')) {
+                            
+                            loadingOverlay.style.display = 'flex';
+                            
+                            // Import Transactions
+                            if (data.transactions) {
+                                for (const t of data.transactions) {
+                                    // We must create new docs, we can't keep old IDs easily
+                                    const newTrans = { ...t };
+                                    delete newTrans.id; // Remove old ID
+                                    newTrans.createdAt = newTrans.createdAt ? new Date(newTrans.createdAt) : new Date(t.date); // Convert timestamp
+                                    await addDoc(collection(db, 'users', userId, 'transactions'), newTrans);
+                                }
+                            }
+                            // Import Installments
+                            if (data.installments) {
+                                for (const i of data.installments) {
+                                    const newInst = { ...i };
+                                    delete newInst.id;
+                                    await addDoc(collection(db, 'users', userId, 'installments'), newInst);
+                                }
+                            }
+                            
+                            alert('داده‌ها با موفقیت وارد شدند.');
+                            loadingOverlay.style.display = 'none';
+                        }
+                    } catch (error) {
+                        alert(`خطا در ورود داده‌ها: ${error.message}`);
+                        console.error(error);
+                        loadingOverlay.style.display = 'none';
+                    } finally {
+                        event.target.value = null;
+                    }
                 };
+                reader.readAsText(file);
+            };
+            
+            // Telegram Export
+            const handleTelegramExport = () => {
+                const reportHtml = createReportHtml(transactions); // Pass current transactions
+                
+                const btnSpinner = exportTelegramBtn.querySelector('.loading-spinner');
+                exportTelegramBtn.disabled = true;
+                btnSpinner.classList.remove('hidden');
+                
+                fetch('/api/send-report', { // This API endpoint doesn't change
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        htmlContent: reportHtml,
+                        fileName: `financial_report_${new Date().toLocaleDateString('fa-IR').replace(/\//g, '-')}.html`
+                    }),
+                })
+                .then(response => {
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    return response.json();
+                })
+                .then(data => alert('گزارش با موفقیت به تلگرام ارسال شد!'))
+                .catch(error => {
+                    console.error('Error sending report:', error);
+                    alert('خطا در ارسال گزارش به تلگرام.');
+                })
+                .finally(() => {
+                    exportTelegramBtn.disabled = false;
+                    btnSpinner.classList.add('hidden');
+                });
+            };
+            
+            // Create Report HTML function - now uses the passed 'transactions' array
+            function createReportHtml(currentTransactions) {
+                const today = new Date();
+                const fourteenDaysAgo = new Date();
+                fourteenDaysAgo.setDate(today.getDate() - 13);
+                today.setHours(23, 59, 59, 999);
+                fourteenDaysAgo.setHours(0, 0, 0, 0);
 
-                // --- INITIALIZATION ---
-                const init = () => {
-                    currentDateEl.textContent = `امروز: ${new Date().toLocaleDateString('fa-IR')}`;
-                    datePickerEl.value = getTodayDateString();
-                    transactionForm.addEventListener('submit', handleFormSubmit);
-                    incomeBtn.addEventListener('click', () => setTransactionType('income'));
-                    expenseBtn.addEventListener('click', () => setTransactionType('expense'));
-                    cancelBtn.addEventListener('click', resetForm);
-                    datePickerEl.addEventListener('change', () => renderForDate(datePickerEl.value));
-                    exportJsonBtn.addEventListener('click', handleJsonExport);
-                    exportTelegramBtn.addEventListener('click', handleTelegramExport);
-                    importBtn.addEventListener('click', () => importFileInput.click());
-                    importFileInput.addEventListener('change', handleImport);
-                    setTransactionType('income');
-                    renderForDate(datePickerEl.value);
-                    saveAndRenderInstallments();
-                };
-                init();
+                const recentTransactions = currentTransactions.filter(t => {
+                    const transactionDate = new Date(t.date);
+                    return transactionDate >= fourteenDaysAgo && transactionDate <= today;
+                });
+                
+                const totalIncome = recentTransactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                const totalExpense = recentTransactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                const netProfit = totalIncome - totalExpense;
+                
+                const reportDateRange = `${formatDate(fourteenDaysAgo.toISOString().split('T')[0])} - ${formatDate(today.toISOString().split('T')[0])}`;
+                
+                const expenseByCategory = recentTransactions.filter(t => t.type === 'expense').reduce((acc, t) => {
+                    acc[t.category] = (acc[t.category] || 0) + t.amount;
+                    return acc;
+                }, {});
+                
+                const dailyData = {};
+                for (let i = 13; i >= 0; i--) {
+                    const d = new Date();
+                    d.setDate(d.getDate() - i);
+                    const dateStr = d.toISOString().split('T')[0];
+                    dailyData[dateStr] = { income: 0, expense: 0, label: formatDate(dateStr, { month: 'short', day: 'numeric' }) };
+                }
+                recentTransactions.forEach(t => {
+                    if (dailyData[t.date]) dailyData[t.date][t.type] += t.amount;
+                });
+                
+                return `<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>گزارش مالی ۱۴ روز گذشته</title><script src="https://cdn.tailwindcss.com"><\/script><script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet"><style>body{font-family:'Vazirmatn',sans-serif;background-color:#f3f4f6}.card{background-color:white;border-radius:.75rem;box-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);padding:1.5rem}.income{color:#16a34a}.expense{color:#dc2626}<\/style></head><body class="p-4 md:p-8"><div class="max-w-5xl mx-auto space-y-8"><header class="text-center"><h1 class="text-4xl font-bold text-gray-800">گزارش مالی ۱۴ روز گذشته</h1><p class="text-gray-500 mt-2">تاریخ گزارش: ${new Date().toLocaleDateString('fa-IR')}</p><p class="text-gray-500">بازه زمانی: ${reportDateRange}</p></header><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل درآمد</h3><p class="text-3xl font-bold income mt-2">${formatCurrency(totalIncome)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">کل هزینه</h3><p class="text-3xl font-bold expense mt-2">${formatCurrency(totalExpense)}</p></div><div class="card text-center"><h3 class="text-gray-500 font-semibold text-lg">سود/زیان خالص</h3><p class="text-3xl font-bold ${netProfit >= 0 ? 'income' : 'expense'} mt-2">${formatCurrency(netProfit)}</p></div></div><div class="card"><h2 class="text-xl font-bold mb-4 text-center">تحلیل گرافیکی</h2><div class="grid grid-cols-1 lg:grid-cols-5 gap-8 items-center"><div class="lg:col-span-3"><h3 class="font-semibold text-center mb-2 text-gray-700">درآمد و هزینه (۱۴ روز گذشته)</h3><canvas id="barChart"></canvas></div><div class="lg:col-span-2"><h3 class="font-semibold text-center mb-2 text-gray-700">دسته‌بندی هزینه‌ها</h3><canvas id="pieChart" style="max-height:300px;margin:auto"></canvas></div></div></div><div class="card"><h2 class="text-2xl font-bold mb-4">لیست تراکنش‌های ۱۴ روز گذشته</h2><div class="overflow-x-auto">${recentTransactions.length > 0 ? `<table class="w-full text-sm text-right text-gray-500"><thead class="text-xs text-gray-700 uppercase bg-gray-50"><tr><th scope="col" class="px-6 py-3">تاریخ</th><th scope="col" class="px-6 py-3">نوع</th><th scope="col" class="px-6 py-3">دسته/شرح</th><th scope="col" class="px-6 py-3">ساعت</th><th scope="col" class="px-6 py-3">مبلغ</th></tr></thead><tbody>${recentTransactions.sort((a,b)=>new Date(b.date)-new Date(a.date)||b.createdAt-a.createdAt).map(t=>`<tr class="bg-white border-b hover:bg-gray-50"><td class="px-6 py-4">${new Date(t.date).toLocaleDateString("fa-IR")}</td><td class="px-6 py-4"><span class="px-2 py-1 rounded-full text-xs font-semibold ${t.type==="income"?"bg-green-100 text-green-800":"bg-red-100 text-red-800"}">${t.type==="income"?"درآمد":"هزینه"}</span></td><td class="px-6 py-4 font-medium text-gray-900">${t.description||t.category}</td><td class="px-6 py-4 text-gray-600">${t.time||"--"}</td><td class="px-6 py-4 font-semibold ${t.type==="income"?"income":"expense"}">${formatCurrency(t.amount)}</td></tr>`).join("")}</tbody></table>` : '<p class="text-center text-gray-500 py-4">هیچ تراکنشی در ۱۴ روز گذشته ثبت نشده است.</p>'}</div></div></div><script>const formatCurrencyJS=num=>new Intl.NumberFormat("fa-IR").format(num);new Chart(document.getElementById("barChart"),{type:"bar",data:{labels:Object.values(${JSON.stringify(dailyData)}).map(d=>d.label),datasets:[{label:"درآمد",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.income),backgroundColor:"rgba(34, 197, 94, 0.7)",borderRadius:4},{label:"هزینه",data:Object.values(${JSON.stringify(dailyData)}).map(d=>d.expense),backgroundColor:"rgba(239, 68, 68, 0.7)",borderRadius:4}]},options:{responsive:!0,scales:{y:{ticks:{callback:v=>formatCurrencyJS(v)}}},plugins:{tooltip:{callbacks:{label:c=>c.dataset.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});new Chart(document.getElementById("pieChart"),{type:"pie",data:{labels:${JSON.stringify(Object.keys(expenseByCategory))},datasets:[{data:${JSON.stringify(Object.values(expenseByCategory))},backgroundColor:["#ef4444","#f97316","#f59e0b","#84cc16","#22c55e","#10b981","#06b6d4","#3b82f6"],hoverOffset:4}]},options:{responsive:!0,plugins:{legend:{position:"bottom"},tooltip:{callbacks:{label:c=>c.label+": "+formatCurrencyJS(c.raw)+" تومان"}}}}});<\/script></body></html>`;
             }
-        });
+
+            // --- INITIALIZATION ---
+            currentDateEl.textContent = `امروز: ${new Date().toLocaleDateString('fa-IR')}`;
+            datePickerEl.value = getTodayDateString();
+            transactionForm.addEventListener('submit', handleFormSubmit);
+            incomeBtn.addEventListener('click', () => setTransactionType('income'));
+            expenseBtn.addEventListener('click', () => setTransactionType('expense'));
+            cancelBtn.addEventListener('click', resetForm);
+            datePickerEl.addEventListener('change', () => renderForDate(datePickerEl.value));
+            exportJsonBtn.addEventListener('click', handleJsonExport);
+            exportTelegramBtn.addEventListener('click', handleTelegramExport);
+            importBtn.addEventListener('click', () => importFileInput.click());
+            importFileInput.addEventListener('change', handleImport);
+            
+            // Set initial state
+            setTransactionType('income');
+            resetForm(); // Also sets datepicker
+            // renderForDate is called by the onSnapshot listener
+        }
     </script>
 </body>
 </html>
