@@ -11,6 +11,13 @@ const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const FIREBASE_USER_ID = process.env.FIREBASE_USER_ID;
 
+// Define valid categories (must match your web app)
+const VALID_CATEGORIES = {
+    income: ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'],
+    expense: ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'سایر']
+};
+
+
 let serviceAccount;
 try {
   serviceAccount = JSON.parse(process.env.FIREBASE_ADMIN_CONFIG);
@@ -81,20 +88,30 @@ const getThisMonthDateRange = () => {
 
 // --- GEMINI AI LOGIC ---
 
-// --- FIX: Updated and stricter prompt ---
+// --- FIX: Smart Categorization Prompt ---
 const GEMINI_PROMPT = `
-شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
-وظیفه شما فقط و فقط خروجی دادن JSON است.
+شما یک دستیار هوشمند تحلیلگر متن مالی به زبان فارسی هستید. وظیفه شما فقط و فقط خروجی دادن JSON است.
 متن ورودی کاربر را بخوانید و آن را به یکی از 3 ساختار JSON زیر تبدیل کنید.
+
+لیست دسته‌بندی‌های مجاز برای استفاده شما:
+- هزینه (expense): ${JSON.stringify(VALID_CATEGORIES.expense)}
+- درآمد (income): ${JSON.stringify(VALID_CATEGORIES.income)}
 
 1.  **ثبت تراکنش**:
     {
       "intent": "add_transaction",
-      "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]" }
+      "transaction": {
+        "type": "expense" | "income",
+        "amount": [number] (مبلغ به تومان),
+        "description": "[string] (شرح خلاصه)",
+        "category": "[string] (یکی از دسته‌بندی‌های مجاز بالا. اگر هیچکدام مطابقت نداشت، از "سایر" استفاده کنید)"
+      }
     }
     مثال ها:
-    - ورودی: "امروز یه قهوه خریدم ۵۰ تومن" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 50000, "description":"قهوه"}}
-    - ورودی: "۱۵۰ هزار تومن بابت فلش گرفتم" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش"}}
+    - ورودی: "امروز یه قهوه خریدم ۵۰ تومن" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 50000, "description":"قهوه", "category": "قهوه"}}
+    - ورودی: "۱۵۰ هزار تومن بابت فلش گرفتم" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش", "category": "فلش"}}
+    - ورودی: "خرید تیشرت و شلوار 5 میلیون" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 5000000, "description":"خرید تیشرت و شلوار", "category": "پوشاک"}}
+    - ورودی: "قسط بانک ملت رو دادم 1700" -> خروجی: {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 1700000, "description":"قسط بانک ملت", "category": "قسط"}}
 
 2.  **درخواست گزارش**:
     {
@@ -111,13 +128,10 @@ const GEMINI_PROMPT = `
     }
     مثال ها:
     - ورودی: "سلام خوبی؟" -> خروجی: {"intent":"unrecognized"}
-    - ورودی: "تست" -> خروجی: {"intent":"unrecognized"}
-    - ورودی: "asdf" -> خروجی: {"intent":"unrecognized"}
 
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این سه ساختار JSON باشد. هیچ متن اضافه ای نفرستید.**
 `;
 
-// --- FIX: Simplified Gemini call and added safety catch ---
 async function getGeminiAnalysis(text) {
   if (!geminiModel) {
     throw new Error("Gemini Model is not initialized.");
@@ -131,13 +145,12 @@ async function getGeminiAnalysis(text) {
             { role: "user", parts: [{ text: GEMINI_PROMPT }] },
             { role: "model", parts: [{ text: "{\n  \"intent\": \"unrecognized\"\n}" }] } // Give it an example of a good response
         ],
-        generationConfig: { maxOutputTokens: 100 }, // Removed responseMimeType
+        generationConfig: { maxOutputTokens: 150 }, // Increased token size for category
     });
     
     const result = await chat.sendMessage(text);
     const response = await result.response;
 
-    // --- NEW CHECK ---
     // Check for safety ratings or blocks first
     if (response.promptFeedback && response.promptFeedback.blockReason) {
         console.warn(`Gemini blocked the prompt. Reason: ${response.promptFeedback.blockReason}`);
@@ -157,7 +170,6 @@ async function getGeminiAnalysis(text) {
     }
 
     // 3. Try to parse the JSON
-    // The response might be wrapped in ```json ... ```
     if (jsonText.startsWith("```json")) {
       jsonText = jsonText.substring(7, jsonText.length - 3);
     }
@@ -168,23 +180,25 @@ async function getGeminiAnalysis(text) {
     // This will catch errors from Gemini API (network) AND JSON.parse()
     console.error("Error in getGeminiAnalysis (network or parse):", error);
     
-    // Check if it was a JSON parse error specifically
     if (error instanceof SyntaxError) {
         console.warn("Gemini returned non-JSON text:", jsonText);
         return { intent: "unrecognized" }; // Return unrecognized if it's just bad JSON
     }
     
-    // Otherwise, it was a more serious network/API error
     return null; // Return null to signify a major error
   }
 }
 
 // --- DATABASE LOGIC ---
 
+// --- FIX: Use smart category from Gemini ---
 async function addTransaction(transactionData) {
   const newTransaction = {
-      ...transactionData,
-      category: 'سایر', // Default category for bot entries
+      type: transactionData.type,
+      amount: transactionData.amount,
+      description: transactionData.description,
+      // Use Gemini's category, fallback to 'سایر'
+      category: transactionData.category || 'سایر',
       date: new Date().toISOString().split('T')[0], // Today's date
       time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
       createdAt: Timestamp.now(), // Use server timestamp
@@ -242,7 +256,6 @@ async function getReport(reportRequest) {
 
 bot.start((ctx) => ctx.reply('سلام! من ربات هوشمند مالی شما هستم.\nمی‌توانید بنویسید: "امروز ۵۰ تومن قهوه خریدم" تا آن را ثبت کنم.\nیا بپرسید: "این ماه چقدر خرج کردم؟" تا به شما گزارش دهم.'));
 
-// --- FIX: Improved response logic ---
 bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     await ctx.replyWithChatAction('typing'); // Show "typing..." status
@@ -254,7 +267,8 @@ bot.on('text', async (ctx) => {
             // Case 1: Gemini understood and it's a transaction
             const newTransaction = await addTransaction(analysis.transaction);
             const typeText = newTransaction.type === 'income' ? 'درآمد' : 'هزینه';
-            return ctx.reply(`✅ ثبت شد:\n${typeText} به مبلغ ${formatCurrency(newTransaction.amount)} تومان (${newTransaction.description})`);
+            // --- FIX: Respond with the smart category ---
+            return ctx.reply(`✅ ثبت شد:\n${typeText} به مبلغ ${formatCurrency(newTransaction.amount)} تومان\n(شرح: ${newTransaction.description} | دسته‌بندی: ${newTransaction.category})`);
         
         } else if (analysis && analysis.intent === 'get_report') {
             // Case 2: Gemini understood and it's a report request
