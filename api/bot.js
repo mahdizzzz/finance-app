@@ -81,9 +81,10 @@ const getThisMonthDateRange = () => {
 
 // --- GEMINI AI LOGIC ---
 
+// --- FIX: Updated and stricter prompt ---
 const GEMINI_PROMPT = `
-شما یک دستیار هوشمند برای تحلیل پیام‌های مالی به زبان فارسی هستید.
-وظیفه شما این است که متن پیام کاربر را دریافت کنید و آن را به یکی از دو ساختار JSON زیر تبدیل کنید:
+شما یک دستیار هوشمند تحلیلگر متن مالی به زبان فارسی هستید. وظیفه شما فقط و فقط خروجی دادن JSON است.
+متن ورودی کاربر را بخوانید و آن را به یکی از 3 ساختار JSON زیر تبدیل کنید.
 
 1.  اگر پیام، یک **ثبت تراکنش** (هزینه یا درآمد) بود:
     {
@@ -109,9 +110,15 @@ const GEMINI_PROMPT = `
     مثال:
     - ورودی: "امروز چقدر خرج کردم؟" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
     - ورودی: "میزان خرج این ماهم رو بگو" -> خروجی: {"intent":"get_report", "report": {"type":"expense", "period":"month"}}
-    - ورودی: "درآمد امروزم چقدر بود؟" -> خروجی: {"intent":"get_report", "report": {"type":"income", "period":"today"}}
 
-اگر پیام قابل درک نبود یا به این دو دسته تعلق نداشت، فقط یک JSON خالی برگردان: {}
+3.  اگر پیام قابل درک نبود یا به این دو دسته تعلق نداشت (مثلا "سلام"، "تست" و ...):
+    {
+      "intent": "unrecognized"
+    }
+    مثال:
+    - ورودی: "سلام خوبی؟" -> خروجی: {"intent":"unrecognized"}
+
+**مهم: تحت هیچ شرایطی چیزی غیر از فرمت JSON خروجی ندهید.**
 `;
 
 // --- FIX: Improved error handling in getGeminiAnalysis ---
@@ -134,7 +141,7 @@ async function getGeminiAnalysis(text) {
     // 2. Check if the response is empty
     if (!jsonText) {
         console.warn("Gemini returned an empty string.");
-        return {}; // Return empty object if response is empty
+        return { intent: "unrecognized" }; // Return unrecognized if response is empty
     }
 
     // 3. Try to parse the JSON
@@ -147,7 +154,7 @@ async function getGeminiAnalysis(text) {
     // Check if it was a JSON parse error specifically
     if (error instanceof SyntaxError) {
         console.warn("Gemini returned non-JSON text:", jsonText);
-        return {}; // Return empty object if it's just bad JSON
+        return { intent: "unrecognized" }; // Return unrecognized if it's just bad JSON
     }
     
     // Otherwise, it was a more serious network/API error
@@ -224,7 +231,7 @@ bot.on('text', async (ctx) => {
     await ctx.replyWithChatAction('typing'); // Show "typing..." status
 
     try {
-        const analysis = await getGeminiAnalysis(text); // Returns object, {}, or null
+        const analysis = await getGeminiAnalysis(text); // Returns object, {intent: "unrecognized"}, or null
 
         if (analysis && analysis.intent === 'add_transaction') {
             // Case 1: Gemini understood and it's a transaction
@@ -242,7 +249,7 @@ bot.on('text', async (ctx) => {
             return ctx.reply('خطایی در ارتباط با هوش مصنوعی رخ داد. لطفاً بعداً تلاش کنید.');
         
         } else {
-            // Case 4: analysis is {} (Gemini didn't understand the text)
+            // Case 4: analysis is {intent: "unrecognized"} (Gemini didn't understand the text)
             return ctx.reply('متوجه پیام شما نشدم. لطفاً دوباره تلاش کنید (مثلاً: "هزینه 10000 تست" یا "خرج امروز؟")');
         }
 
