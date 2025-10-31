@@ -1,7 +1,7 @@
 {
-  "name": "finance-app-telegram-bot",
+  "name": "finance-app-server",
   "version": "1.0.0",
-  "description": "A simple serverless function to send reports to Telegram.",
+  "description": "Serverless functions for my finance app",
   "dependencies": {
     "node-telegram-bot-api": "^0.61.0"
   }
