@@ -35,7 +35,9 @@ if (!getApps().length) {
 let genAI, geminiModel;
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  geminiModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest"});
+  // --- FIX ---
+  // Updated model name to the correct version
+  geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-09-2025"});
 } else {
   console.error("Gemini API Key is not set.");
 }
