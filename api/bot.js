@@ -117,7 +117,7 @@ const GEMINI_PROMPT = `
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این سه ساختار JSON باشد. هیچ متن اضافه ای نفرستید.**
 `;
 
-// --- FIX: Changed to generateContent and using systemInstruction ---
+// --- FIX: Simplified Gemini call and added safety catch ---
 async function getGeminiAnalysis(text) {
   if (!geminiModel) {
     throw new Error("Gemini Model is not initialized.");
@@ -126,15 +126,28 @@ async function getGeminiAnalysis(text) {
   let jsonText = ""; // Initialize empty string
   try {
     // 1. Try to get response from Gemini
-    const result = await geminiModel.generateContent({
-        contents: [{ role: "user", parts: [{ text: text }] }],
-        systemInstruction: {
-            parts: [{ text: GEMINI_PROMPT }]
-        },
-        generationConfig: { maxOutputTokens: 100, responseMimeType: "application/json" },
+    const chat = geminiModel.startChat({
+        history: [
+            { role: "user", parts: [{ text: GEMINI_PROMPT }] },
+            { role: "model", parts: [{ text: "{\n  \"intent\": \"unrecognized\"\n}" }] } // Give it an example of a good response
+        ],
+        generationConfig: { maxOutputTokens: 100 }, // Removed responseMimeType
     });
     
+    const result = await chat.sendMessage(text);
     const response = await result.response;
+
+    // --- NEW CHECK ---
+    // Check for safety ratings or blocks first
+    if (response.promptFeedback && response.promptFeedback.blockReason) {
+        console.warn(`Gemini blocked the prompt. Reason: ${response.promptFeedback.blockReason}`);
+        return { intent: "unrecognized" };
+    }
+    if (response.candidates && response.candidates[0].finishReason !== 'STOP') {
+        console.warn(`Gemini did not finish. Reason: ${response.candidates[0].finishReason}`);
+        return { intent: "unrecognized" };
+    }
+
     jsonText = response.text();
 
     // 2. Check if the response is empty
@@ -144,6 +157,11 @@ async function getGeminiAnalysis(text) {
     }
 
     // 3. Try to parse the JSON
+    // The response might be wrapped in ```json ... ```
+    if (jsonText.startsWith("```json")) {
+      jsonText = jsonText.substring(7, jsonText.length - 3);
+    }
+    
     return JSON.parse(jsonText);
 
   } catch (error) {
