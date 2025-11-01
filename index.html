@@ -88,6 +88,20 @@
             animation: spin 1s ease-in-out infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* Budget Progress Bar */
+        .progress-bar {
+            background-color: #e5e7eb;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 10px;
+        }
+        .progress-bar-inner {
+            height: 100%;
+            background-color: #3b82f6;
+            transition: width 0.5s ease;
+        }
+        .progress-bar-inner.warning { background-color: #f97316; }
+        .progress-bar-inner.danger { background-color: #ef4444; }
     </style>
 </head>
 <body class="antialiased">
@@ -122,9 +136,10 @@
         </div>
     </div>
 
-    <!-- Add Installment Modal -->
-    <div id="installment-modal" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm mx-4">
+    <!-- Add/Edit Modal (Combined) -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <!-- Installment Modal -->
+        <div id="installment-modal" class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm mx-4 hidden">
             <h2 class="text-2xl font-bold mb-6 text-gray-800 text-center">افزودن قسط جدید</h2>
             <form id="installment-form" class="space-y-4">
                 <div>
@@ -141,11 +156,32 @@
                 </div>
                 <div class="flex gap-4 pt-4">
                     <button type="submit" class="btn btn-primary w-full">افزودن</button>
-                    <button type="button" id="cancel-installment-btn" class="btn btn-secondary w-full">انصراف</button>
+                    <button type="button" class="btn btn-secondary w-full" onclick="closeModal()">انصراف</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Budget Modal -->
+        <div id="budget-modal" class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm mx-4 hidden">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800 text-center">تنظیم بودجه ماهانه</h2>
+            <form id="budget-form" class="space-y-4">
+                <div>
+                    <label for="budget-category" class="block mb-2 font-semibold text-gray-700">دسته‌بندی (هزینه)</label>
+                    <select id="budget-category" class="form-input"></select>
+                </div>
+                <div>
+                    <label for="budget-amount" class="block mb-2 font-semibold text-gray-700">سقف بودجه (تومان)</label>
+                    <input type="number" id="budget-amount" class="form-input" placeholder="مثال: 3000000" required min="0">
+                </div>
+                <p class="text-xs text-gray-500">با ثبت مبلغ 0، بودجه این دسته‌بندی حذف می‌شود.</p>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="btn btn-primary w-full">ذخیره بودجه</button>
+                    <button type="button" class="btn btn-secondary w-full" onclick="closeModal()">انصراف</button>
                 </div>
             </form>
         </div>
     </div>
+
 
     <!-- Main App Container (Initially Hidden) -->
     <div id="app-container" class="hidden">
@@ -180,6 +216,17 @@
                                 <span>میانگین روزانه:</span>
                                 <span id="daily-installments">۰ تومان</span>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Budget Card -->
+                    <div class="card">
+                        <div class="flex justify-between items-center mb-4 border-b pb-2">
+                             <h2 class="text-xl font-bold">بودجه‌بندی ماهانه</h2>
+                             <button id="add-budget-btn" class="text-blue-600 hover:text-blue-800 text-sm font-semibold">تنظیم بودجه</button>
+                        </div>
+                        <div id="budget-list" class="space-y-4 text-sm">
+                           <p class="text-gray-500 text-center py-4">در حال بارگذاری بودجه‌ها...</p>
                         </div>
                     </div>
 
@@ -290,18 +337,13 @@
             where,
             onSnapshot,
             serverTimestamp,
-            orderBy
+            orderBy,
+            getDocs // Needed for budget calculation
         } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
 
         // =======================================================================
         // --- قدم مهم: پیکربندی Firebase ---
         // =======================================================================
-        // !!!!!!!!!!! خطای شما به دلیل این بخش است !!!!!!!!!!!
-        //
-        // اطلاعاتی را که در "فاز اول" از سایت Firebase کپی کردید،
-        // (همان متنی که برای من فرستادید)
-        // به طور کامل در اینجا جایگزین کنید.
-        
         const firebaseConfig = {
           apiKey: "AIzaSyBBp53jNpqaNHJnjfuF0uSEuhL4Pn9iq98",
           authDomain: "my-finance-app-973ba.firebaseapp.com",
@@ -321,8 +363,10 @@
         let currentUserId = null;
         let transactions = [];
         let installments = [];
+        let budgets = []; // <-- NEW: Add budgets state
         let unsubscribeTransactions = () => {};
         let unsubscribeInstallments = () => {};
+        let unsubscribeBudgets = () => {}; // <-- NEW: Add budget listener
         let myChart;
 
         // --- DOM Elements ---
@@ -337,6 +381,11 @@
         const authTitle = document.getElementById('auth-title');
         const authError = document.getElementById('auth-error');
         const logoutBtn = document.getElementById('logout-btn');
+        
+        // Modal Elements
+        const modalBackdrop = document.getElementById('modal-backdrop');
+        const installmentModal = document.getElementById('installment-modal');
+        const budgetModal = document.getElementById('budget-modal'); // <-- NEW
         
         // App Elements
         const transactionForm = document.getElementById('transaction-form');
@@ -368,11 +417,15 @@
         // Installment Elements
         const installmentsList = document.getElementById('installments-list');
         const addInstallmentBtn = document.getElementById('add-installment-btn');
-        const installmentModal = document.getElementById('installment-modal');
         const installmentForm = document.getElementById('installment-form');
-        const cancelInstallmentBtn = document.getElementById('cancel-installment-btn');
         const totalInstallmentsEl = document.getElementById('total-installments');
         const dailyInstallmentsEl = document.getElementById('daily-installments');
+        
+        // Budget Elements <-- NEW
+        const budgetList = document.getElementById('budget-list');
+        const addBudgetBtn = document.getElementById('add-budget-btn');
+        const budgetForm = document.getElementById('budget-form');
+        const budgetCategorySelect = document.getElementById('budget-category');
 
         // App Config
         let selectedType = 'income';
@@ -390,7 +443,20 @@
         };
         const getTodayDateString = () => new Date().toISOString().split('T')[0];
         const getPersianDay = () => parseInt(new Date().toLocaleDateString('fa-IR-u-nu-latn').split('/')[2], 10);
+        // <-- NEW -->
+        const getMonthYear = (date = new Date()) => {
+            return date.toLocaleDateString('fa-IR-u-nu-latn').slice(0, 7); // e.g., "1403/08"
+        };
         
+        // --- MODAL FUNCTIONS ---
+        window.closeModal = () => {
+            modalBackdrop.classList.add('hidden');
+            installmentModal.classList.add('hidden');
+            budgetModal.classList.add('hidden');
+            installmentForm.reset();
+            budgetForm.reset();
+        }
+
         // --- AUTHENTICATION LOGIC ---
         onAuthStateChanged(auth, (user) => {
             if (user) {
@@ -405,8 +471,10 @@
                 // Clear all listeners and data
                 if (typeof unsubscribeTransactions === 'function') unsubscribeTransactions();
                 if (typeof unsubscribeInstallments === 'function') unsubscribeInstallments();
+                if (typeof unsubscribeBudgets === 'function') unsubscribeBudgets(); // <-- NEW
                 transactions = [];
                 installments = [];
+                budgets = []; // <-- NEW
             }
             loadingOverlay.style.display = 'none';
         });
@@ -430,13 +498,10 @@
 
             try {
                 if (isRegisterMode) {
-                    // Register
                     await createUserWithEmailAndPassword(auth, email, password);
                 } else {
-                    // Login
                     await signInWithEmailAndPassword(auth, email, password);
                 }
-                // onAuthStateChanged will handle showing the app
             } catch (error) {
                 console.error("Auth Error:", error.message);
                 authError.textContent = getPersianAuthError(error.code);
@@ -448,15 +513,9 @@
 
         authToggleBtn.addEventListener('click', () => {
             isRegisterMode = !isRegisterMode;
-            if (isRegisterMode) {
-                authTitle.textContent = 'ساخت حساب کاربری';
-                authSubmitBtn.textContent = 'ثبت‌نام';
-                authToggleBtn.textContent = 'حساب دارید؟ ورود';
-            } else {
-                authTitle.textContent = 'ورود به حساب کاربری';
-                authSubmitBtn.textContent = 'ورود';
-                authToggleBtn.textContent = 'ثبت‌نام نکرده‌اید؟ ساخت حساب';
-            }
+            authTitle.textContent = isRegisterMode ? 'ساخت حساب کاربری' : 'ورود به حساب کاربری';
+            authSubmitBtn.textContent = isRegisterMode ? 'ثبت‌نام' : 'ورود';
+            authToggleBtn.textContent = isRegisterMode ? 'حساب دارید؟ ورود' : 'ثبت‌نام نکرده‌اید؟ ساخت حساب';
         });
 
         logoutBtn.addEventListener('click', () => {
@@ -486,13 +545,13 @@
             const qTrans = query(transCol, orderBy('date', 'desc'));
             unsubscribeTransactions = onSnapshot(qTrans, (snapshot) => {
                 transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                // Convert Firestore Timestamps back to JS Dates (if needed)
                 transactions.forEach(t => {
                     if (t.createdAt && t.createdAt.toDate) {
                         t.createdAt = t.createdAt.toDate().getTime();
                     }
                 });
                 renderForDate(datePickerEl.value);
+                renderBudgets(); // <-- Update budgets when transactions change
             }, (error) => {
                 console.error("Error fetching transactions: ", error);
                 transactionList.innerHTML = `<p class="text-red-500 text-center py-4">خطا در بارگذاری تراکنش‌ها.</p>`;
@@ -508,6 +567,17 @@
                 console.error("Error fetching installments: ", error);
                 installmentsList.innerHTML = `<p class="text-red-500 text-center py-4">خطا در بارگذاری اقساط.</p>`;
             });
+            
+            // <-- NEW: Listener for Budgets -->
+            const budgetCol = collection(db, 'users', userId, 'budgets');
+            unsubscribeBudgets = onSnapshot(budgetCol, (snapshot) => {
+                budgets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                renderBudgets();
+            }, (error) => {
+                console.error("Error fetching budgets: ", error);
+                budgetList.innerHTML = `<p class="text-red-500 text-center py-4">خطا در بارگذاری بودجه‌ها.</p>`;
+            });
+
 
             // --- INSTALLMENT LOGIC ---
             function updateInstallmentSummary() {
@@ -543,7 +613,6 @@
                             if (confirm('آیا از حذف این قسط مطمئن هستید؟')) {
                                 try {
                                     await deleteDoc(doc(db, 'users', userId, 'installments', idToDelete));
-                                    // No need to manually update, onSnapshot will handle it.
                                 } catch (error) {
                                     console.error("Error deleting installment: ", error);
                                     alert("خطا در حذف قسط.");
@@ -554,10 +623,9 @@
                 }
                 updateInstallmentSummary();
             }
-            addInstallmentBtn.addEventListener('click', () => installmentModal.classList.remove('hidden'));
-            cancelInstallmentBtn.addEventListener('click', () => {
-                installmentModal.classList.add('hidden');
-                installmentForm.reset();
+            addInstallmentBtn.addEventListener('click', () => {
+                modalBackdrop.classList.remove('hidden');
+                installmentModal.classList.remove('hidden');
             });
             installmentForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -568,14 +636,87 @@
                 };
                 try {
                     await addDoc(collection(db, 'users', userId, 'installments'), newInstallment);
-                    // No need to manually update, onSnapshot will handle it.
-                    installmentForm.reset();
-                    installmentModal.classList.add('hidden');
+                    closeModal();
                 } catch (error) {
                     console.error("Error adding installment: ", error);
                     alert("خطا در افزودن قسط.");
                 }
             });
+
+            // --- BUDGET LOGIC ---
+            function renderBudgets() {
+                budgetList.innerHTML = '';
+                const currentMonth = getMonthYear();
+                const monthlyExpenses = transactions
+                    .filter(t => t.type === 'expense' && t.date.startsWith(currentMonth))
+                    .reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + t.amount;
+                        return acc;
+                    }, {});
+
+                if (budgets.length === 0) {
+                    budgetList.innerHTML = `<p class="text-gray-500 text-center text-xs">بودجه‌ای تنظیم نشده است.</p>`;
+                } else {
+                    budgets.forEach(budget => {
+                        const spent = monthlyExpenses[budget.category] || 0;
+                        const remaining = budget.amount - spent;
+                        const percent = (spent / budget.amount) * 100;
+                        let barClass = '';
+                        if (percent > 90) barClass = 'danger';
+                        else if (percent > 75) barClass = 'warning';
+
+                        const div = document.createElement('div');
+                        div.innerHTML = `
+                            <div class="flex justify-between mb-1">
+                                <span class="font-semibold">${budget.category}</span>
+                                <span class="text-gray-600">${formatCurrency(spent)} / ${formatCurrency(budget.amount)}</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-bar-inner ${barClass}" style="width: ${Math.min(percent, 100)}%"></div>
+                            </div>
+                            <p class="text-xs text-left mt-1 ${remaining < 0 ? 'expense' : 'text-gray-500'}">
+                                ${remaining < 0 ? `${formatCurrency(Math.abs(remaining))} اضافه خرج` : `${formatCurrency(remaining)} باقیمانده`}
+                            </p>
+                        `;
+                        budgetList.appendChild(div);
+                    });
+                }
+            }
+
+            addBudgetBtn.addEventListener('click', () => {
+                // Populate budget category dropdown
+                budgetCategorySelect.innerHTML = '';
+                expenseCategories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    budgetCategorySelect.appendChild(option);
+                });
+                modalBackdrop.classList.remove('hidden');
+                budgetModal.classList.remove('hidden');
+            });
+            
+            budgetForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const category = budgetCategorySelect.value;
+                const amount = parseInt(document.getElementById('budget-amount').value, 10);
+                
+                try {
+                    // Use category name as doc ID for easy overwrites
+                    const docRef = doc(db, 'users', userId, 'budgets', category); 
+                    if (amount > 0) {
+                        await setDoc(docRef, { category: category, amount: amount });
+                    } else {
+                        // Delete the budget if amount is 0
+                        await deleteDoc(docRef);
+                    }
+                    closeModal();
+                } catch (error) {
+                    console.error("Error setting budget: ", error);
+                    alert("خطا در تنظیم بودجه.");
+                }
+            });
+
 
             // --- CATEGORY & TYPE HANDLING ---
             const updateCategoryOptions = (type) => {
@@ -737,19 +878,16 @@
 
                 try {
                     if (editMode) {
-                        // Update existing doc
                         const docRef = doc(db, 'users', userId, 'transactions', transactionIdInput.value);
                         await setDoc(docRef, transactionData, { merge: true });
                     } else {
-                        // Add new doc
                         const dataWithTimestamp = {
                             ...transactionData,
-                            createdAt: serverTimestamp(), // Use server timestamp
+                            createdAt: serverTimestamp(),
                             time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
                         };
                         await addDoc(collection(db, 'users', userId, 'transactions'), dataWithTimestamp);
                     }
-                    // onSnapshot will handle the UI update
                     resetForm();
                 } catch (error) {
                     console.error("Error saving transaction: ", error);
@@ -790,7 +928,6 @@
                 if (confirm('آیا از حذف این تراکنش مطمئن هستید؟')) {
                     try {
                         await deleteDoc(doc(db, 'users', userId, 'transactions', id));
-                        // onSnapshot will handle the UI update
                     } catch (error) {
                         console.error("Error deleting transaction: ", error);
                         alert("خطا در حذف تراکنش.");
@@ -799,12 +936,11 @@
             };
 
             // --- IMPORT/EXPORT LOGIC ---
-            // Export remains local, as it's a backup FOR the user
             const handleJsonExport = () => {
                 if (transactions.length === 0 && installments.length === 0) {
                     return alert('داده‌ای برای خروجی گرفتن وجود ندارد.');
                 }
-                const dataStr = JSON.stringify({ transactions, installments }, null, 2);
+                const dataStr = JSON.stringify({ transactions, installments, budgets }, null, 2);
                 const dataBlob = new Blob([dataStr], { type: 'application/json' });
                 const url = URL.createObjectURL(dataBlob);
                 const link = document.createElement('a');
@@ -814,8 +950,6 @@
                 URL.revokeObjectURL(url);
             };
             
-            // Import is now more complex, it needs to write to Firestore.
-            // This is a bulk write operation.
             const handleImport = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
@@ -823,29 +957,32 @@
                 reader.onload = async (e) => {
                     try {
                         const data = JSON.parse(e.target.result);
-                        if (!data.transactions && !data.installments) {
+                        if (!data.transactions && !data.installments && !data.budgets) {
                             throw new Error("فایل معتبر نیست.");
                         }
                          if (confirm('هشدار: داده‌های موجود در این فایل به حساب ابری شما اضافه می‌شوند. (جایگزین نمی‌شوند). آیا ادامه می‌دهید؟')) {
                             
                             loadingOverlay.style.display = 'flex';
                             
-                            // Import Transactions
                             if (data.transactions) {
                                 for (const t of data.transactions) {
-                                    // We must create new docs, we can't keep old IDs easily
                                     const newTrans = { ...t };
-                                    delete newTrans.id; // Remove old ID
-                                    newTrans.createdAt = newTrans.createdAt ? new Date(newTrans.createdAt) : new Date(t.date); // Convert timestamp
+                                    delete newTrans.id; 
+                                    newTrans.createdAt = newTrans.createdAt ? new Date(newTrans.createdAt) : new Date(t.date);
                                     await addDoc(collection(db, 'users', userId, 'transactions'), newTrans);
                                 }
                             }
-                            // Import Installments
                             if (data.installments) {
                                 for (const i of data.installments) {
                                     const newInst = { ...i };
                                     delete newInst.id;
                                     await addDoc(collection(db, 'users', userId, 'installments'), newInst);
+                                }
+                            }
+                            if (data.budgets) {
+                                for (const b of data.budgets) {
+                                    const docRef = doc(db, 'users', userId, 'budgets', b.category); 
+                                    await setDoc(docRef, b);
                                 }
                             }
                             
@@ -865,13 +1002,13 @@
             
             // Telegram Export
             const handleTelegramExport = () => {
-                const reportHtml = createReportHtml(transactions); // Pass current transactions
+                const reportHtml = createReportHtml(transactions); 
                 
                 const btnSpinner = exportTelegramBtn.querySelector('.loading-spinner');
                 exportTelegramBtn.disabled = true;
                 btnSpinner.classList.remove('hidden');
                 
-                fetch('/api/send-report', { // This API endpoint doesn't change
+                fetch('/api/send-report', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -894,7 +1031,6 @@
                 });
             };
             
-            // Create Report HTML function - now uses the passed 'transactions' array
             function createReportHtml(currentTransactions) {
                 const today = new Date();
                 const fourteenDaysAgo = new Date();
@@ -948,7 +1084,6 @@
             // Set initial state
             setTransactionType('income');
             resetForm(); // Also sets datepicker
-            // renderForDate is called by the onSnapshot listener
         }
     </script>
 </body>
