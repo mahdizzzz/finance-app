@@ -397,7 +397,7 @@
                 // User is signed in
                 currentUserId = user.uid;
                 showApp();
-                runAppLogic(currentUserId); // <-- FIX: Renamed function call
+                runAppLogic(currentUserId);
             } else {
                 // User is signed out
                 currentUserId = null;
@@ -414,7 +414,6 @@
         function showApp() {
             authContainer.classList.add('hidden');
             appContainer.classList.remove('hidden');
-            // <-- FIX: Removed problematic initializeApp() call
         }
 
         function showLogin() {
@@ -478,7 +477,6 @@
         }
 
         // --- MAIN APP LOGIC ---
-        // <-- FIX: Renamed function to avoid conflict with imported initializeApp
         function runAppLogic(userId) { 
             
             // --- FIREBASE DATA LISTENERS (REAL-TIME SYNC) ---
