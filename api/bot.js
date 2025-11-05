@@ -134,19 +134,24 @@ const GEMINI_PARSER_PROMPT = `
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این ساختارها باشد.**
 `;
 
+// --- FIX: Using generateContent for the parser as well ---
 async function getGeminiAnalysis(text) {
   if (!geminiModel) throw new Error("Gemini Model is not initialized.");
   
   let jsonText = "";
   try {
-    const chat = geminiModel.startChat({
-        history: [{ role: "user", parts: [{ text: GEMINI_PARSER_PROMPT }] }],
-        generationConfig: { maxOutputTokens: 200 },
+    // 1. Try to get response from Gemini
+    const result = await geminiModel.generateContent({
+        contents: [{ role: "user", parts: [{ text: text }] }],
+        systemInstruction: {
+            parts: [{ text: GEMINI_PARSER_PROMPT }]
+        },
+        generationConfig: { maxOutputTokens: 200, responseMimeType: "application/json" },
     });
     
-    const result = await chat.sendMessage(text);
     const response = await result.response;
 
+    // Check for safety ratings or blocks first
     if (response.promptFeedback && response.promptFeedback.blockReason) {
         console.warn(`Gemini blocked the prompt. Reason: ${response.promptFeedback.blockReason}`);
         return { intent: "unrecognized" };
@@ -162,10 +167,7 @@ async function getGeminiAnalysis(text) {
         return { intent: "unrecognized" };
     }
 
-    if (jsonText.startsWith("```json")) {
-      jsonText = jsonText.substring(7, jsonText.length - 3);
-    }
-    
+    // The API is set to return JSON, so no need to strip backticks
     return JSON.parse(jsonText);
 
   } catch (error) {
