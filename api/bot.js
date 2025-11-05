@@ -2,7 +2,7 @@
 
 import { Telegraf } from 'telegraf';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore, Timestamp, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, doc, setDoc, getDoc, collection, getDocs, query, where, orderBy, addDoc } from 'firebase-admin/firestore';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // --- CONFIGURATION ---
@@ -67,6 +67,10 @@ const getDateRange = (period) => {
     } else if (period === 'month') {
         start = new Date(now.getFullYear(), now.getMonth(), 1);
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    } else if (period === 'week') {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()); // Start of week (Sunday)
+        end = new Date(start);
+        end.setDate(start.getDate() + 7);
     } else { // 'all_time' or default
         return null; // No date filter
     }
@@ -81,82 +85,70 @@ const getDateRange = (period) => {
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
-متن ورودی کاربر را بخوانید و آن را به یکی از 6 ساختار JSON زیر تبدیل کنید.
+متن ورودی کاربر را بخوانید و آن را به یکی از 7 ساختار JSON زیر تبدیل کنید.
 
 لیست دسته‌بندی‌های مجاز برای تراکنش‌ها:
 - هزینه (expense): ${JSON.stringify(VALID_CATEGORIES.expense)}
 - درآمد (income): ${JSON.stringify(VALID_CATEGORIES.income)}
 
 1.  **ثبت تراکنش**:
-    {
-      "intent": "add_transaction",
-      "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]", "category": "[string]" }
-    }
-    مثال: "خرید تیشرت و شلوار 5 میلیون" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 5000000, "description":"خرید تیشرت و شلوار", "category": "پوشاک"}}
+    {"intent": "add_transaction", "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]", "category": "[string]" }}
+    مثال: "خرید تیشرت 5 میلیون" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 5000000, "description":"خرید تیشرت", "category": "پوشاک"}}
 
-2.  **درخواست گزارش تراکنش**:
-    {
-      "intent": "get_report",
-      "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }
-    }
+2.  **درخواست گزارش (جمع کل)**:
+    {"intent": "get_report", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }}
     مثال: "امروز چقدر خرج کردم؟" -> {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
 
-3.  **ثبت یا به‌روزرسانی موجودی حساب**:
-    {
-      "intent": "update_balance",
-      "account": { "name": "[string]", "balance": [number] }
-    }
+3.  **درخواست لیست تراکنش‌ها (جدید)**:
+    {"intent": "get_transaction_list", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" }}
+    مثال: "امروز چی خریدم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
+    مثال: "چه چیزهایی امروز خرج کردم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
+
+4.  **ثبت موجودی حساب**:
+    {"intent": "update_balance", "account": { "name": "[string]", "balance": [number] }}
     مثال: "موجودی بانک ملی من ۵ میلیون است" -> {"intent":"update_balance", "account": {"name": "بانک ملی", "balance": 5000000}}
 
-4.  **درخواست موجودی حساب**:
-    {
-      "intent": "get_balance",
-      "account": { "name": "[string]" }
-    }
+5.  **درخواست موجودی حساب**:
+    {"intent": "get_balance", "account": { "name": "[string]" }}
     مثال: "موجودی‌هام چقدره؟" -> {"intent":"get_balance", "account": {"name": "all"}}
 
-5.  **درخواست تحلیل هوشمند (جدید)**:
-    {
-      "intent": "get_analysis",
-      "period": "month" | "week" 
-    }
-    مثال ها:
-    - "این ماه چطور بودم؟" -> {"intent":"get_analysis", "period":"month"}
-    - "یه تحلیل از این هفته بهم بده" -> {"intent":"get_analysis", "period":"week"}
-    - "وضعیت مالی من چطوره؟" -> {"intent":"get_analysis", "period":"month"}
+6.  **درخواست تحلیل هوشمند**:
+    {"intent": "get_analysis", "period": "month" | "week" | "today" }
+    مثال: "این ماه چطور بودم؟" -> {"intent":"get_analysis", "period":"month"}
+    مثال: "آمار امروز رو بده" -> {"intent":"get_analysis", "period":"today"}
 
-6.  **نامفهوم**:
-    {
-      "intent": "unrecognized"
-    }
+7.  **تنظیم یادآوری سفارشی (جدید)**:
+    {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
+    مثال: "ساعت ۳ بعد از ظهر بهم یادآوری کن جزئیات مالی رو ثبت کنم" -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "جزئیات مالی رو ثبت کنم"}}
+    مثال: "یادم بنداز ساعت 9 شب قسط رو بدم" -> {"intent":"set_reminder", "reminder": {"time": "21:00", "message": "قسط رو بدم"}}
+
+8.  **نامفهوم**:
+    {"intent": "unrecognized"}
     مثال: "سلام خوبی؟" -> {"intent":"unrecognized"}
 
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این ساختارها باشد.**
 `;
 
-// --- FIX: Using generateContent for the parser as well ---
 async function getGeminiAnalysis(text) {
   if (!geminiModel) throw new Error("Gemini Model is not initialized.");
   
   let jsonText = "";
   try {
-    // 1. Try to get response from Gemini
     const result = await geminiModel.generateContent({
         contents: [{ role: "user", parts: [{ text: text }] }],
         systemInstruction: {
             parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
-        generationConfig: { maxOutputTokens: 200, responseMimeType: "application/json" },
+        generationConfig: { maxOutputTokens: 250, responseMimeType: "application/json" },
     });
     
     const response = await result.response;
 
-    // Check for safety ratings or blocks first
     if (response.promptFeedback && response.promptFeedback.blockReason) {
         console.warn(`Gemini blocked the prompt. Reason: ${response.promptFeedback.blockReason}`);
         return { intent: "unrecognized" };
     }
-    if (response.candidates && response.candidates[0].finishReason !== 'STOP') {
+    if (!response.candidates || response.candidates[0].finishReason !== 'STOP') {
         console.warn(`Gemini did not finish. Reason: ${response.candidates[0].finishReason}`);
         return { intent: "unrecognized" };
     }
@@ -167,7 +159,6 @@ async function getGeminiAnalysis(text) {
         return { intent: "unrecognized" };
     }
 
-    // The API is set to return JSON, so no need to strip backticks
     return JSON.parse(jsonText);
 
   } catch (error) {
@@ -189,7 +180,7 @@ async function addTransaction(transactionData) {
       description: transactionData.description,
       category: transactionData.category || 'سایر',
       date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
+      time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }),
       createdAt: Timestamp.now(),
   };
 
@@ -240,6 +231,48 @@ async function getReport(reportRequest) {
     return `مجموع ${typeText} شما در ${periodText}: ${formatCurrency(totalAmount)} تومان`;
 }
 
+// --- NEW: Get List of Transactions ---
+async function getTransactionList(reportRequest) {
+    let { type, period } = reportRequest;
+    let queryRef = db.collection('users').doc(FIREBASE_USER_ID).collection('transactions');
+    
+    let dateRange;
+    let periodText = "";
+    if (period === 'today') {
+        dateRange = getDateRange('today');
+        queryRef = queryRef.where('createdAt', '>=', dateRange.start).where('createdAt', '<', dateRange.end);
+        periodText = "امروز";
+    } else if (period === 'month') {
+        dateRange = getDateRange('month');
+        queryRef = queryRef.where('createdAt', '>=', dateRange.start).where('createdAt', '<=', dateRange.end);
+        periodText = "این ماه";
+    }
+    
+    if (type === 'expense') {
+        queryRef = queryRef.where('type', '==', 'expense');
+    } else if (type === 'income') {
+        queryRef = queryRef.where('type', '==', 'income');
+    }
+
+    queryRef = queryRef.orderBy('createdAt', 'desc');
+
+    const snapshot = await queryRef.get();
+
+    if (snapshot.empty) {
+        return `هیچ تراکنشی برای ${periodText} یافت نشد.`;
+    }
+
+    let message = `لیست تراکنش‌های شما (${periodText}):\n\n`;
+    snapshot.forEach(doc => {
+        const t = doc.data();
+        const sign = t.type === 'expense' ? '-' : '+';
+        message += `• ${t.description} (${t.category}): ${sign}${formatCurrency(t.amount)} تومان\n`;
+    });
+
+    return message;
+}
+
+
 async function updateAccountBalance(accountData) {
     const docRef = doc(db, 'users', FIREBASE_USER_ID, 'accounts', accountData.name);
     await setDoc(docRef, { 
@@ -279,9 +312,32 @@ async function getAccountBalances(accountRequest) {
     return message;
 }
 
+// --- NEW: Set a Custom Reminder ---
+async function setReminder(reminderData) {
+    const { time, message } = reminderData;
+    const [hours, minutes] = time.split(':').map(Number);
+    
+    const now = new Date();
+    // Set reminder time in Tehran timezone
+    const reminderTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
+    reminderTime.setHours(hours, minutes, 0, 0);
+
+    // If time is in the past, set it for tomorrow
+    if (reminderTime < new Date()) {
+        reminderTime.setDate(reminderTime.getDate() + 1);
+    }
+
+    const docRef = await addDoc(collection(db, 'users', FIREBASE_USER_ID, 'reminders'), {
+        message: message,
+        runAt: Timestamp.fromDate(reminderTime),
+        isSent: false
+    });
+    
+    return `✅ یادآوری تنظیم شد:\n"${message}"\nدر ساعت ${time} (فردا اگر زمان گذشته باشد).`;
+}
+
 // --- NEW AI ANALYST FUNCTION ---
 async function getFinancialAnalysis(period) {
-    // 1. Fetch data from Firebase
     let dateRange;
     let periodText = "";
     if (period === 'week') {
@@ -290,6 +346,9 @@ async function getFinancialAnalysis(period) {
         weekAgo.setDate(today.getDate() - 7);
         dateRange = { start: Timestamp.fromDate(weekAgo), end: Timestamp.now() };
         periodText = "۷ روز گذشته";
+    } else if (period === 'today') {
+        dateRange = getDateRange('today');
+        periodText = "امروز";
     } else { // Default to month
         dateRange = getDateRange('month');
         periodText = "ماه جاری";
@@ -305,7 +364,6 @@ async function getFinancialAnalysis(period) {
         return `هیچ تراکنشی در ${periodText} ثبت نشده است تا تحلیلی ارائه دهم.`;
     }
 
-    // 2. Format data for Gemini
     let transactionsList = [];
     let totalIncome = 0;
     let totalExpense = 0;
@@ -330,7 +388,6 @@ async function getFinancialAnalysis(period) {
     ${transactionsList.join('\n')}
     `;
 
-    // 3. Send to Gemini for analysis
     const ANALYST_PROMPT = `
     شما یک حسابدار ارشد و مشاور مالی شخصی بسیار دقیق و خوش‌برخورد به زبان فارسی هستید.
     من داده‌های مالی کاربر در ${periodText} را به شما می‌دهم.
@@ -368,44 +425,43 @@ bot.on('text', async (ctx) => {
         const analysis = await getGeminiAnalysis(text);
 
         if (analysis && analysis.intent === 'add_transaction') {
-            // Case 1: Add Transaction
             const newTransaction = await addTransaction(analysis.transaction);
             const typeText = newTransaction.type === 'income' ? 'درآمد' : 'هزینه';
             return ctx.reply(`✅ ثبت شد:\n${typeText} به مبلغ ${formatCurrency(newTransaction.amount)} تومان\n(شرح: ${newTransaction.description} | دسته‌بندی: ${newTransaction.category})`);
         
         } else if (analysis && analysis.intent === 'get_report') {
-            // Case 2: Get Transaction Report
             const reportMessage = await getReport(analysis.report);
             return ctx.reply(reportMessage);
         
+        } else if (analysis && analysis.intent === 'get_transaction_list') { // <-- NEW
+            const listMessage = await getTransactionList(analysis.report);
+            return ctx.reply(listMessage);
+
         } else if (analysis && analysis.intent === 'update_balance') {
-            // Case 3: Update Account Balance
             const updatedAccount = await updateAccountBalance(analysis.account);
             return ctx.reply(`✅ موجودی ثبت/به‌روز شد:\n${updatedAccount.name}: ${formatCurrency(updatedAccount.balance)} تومان`);
         
         } else if (analysis && analysis.intent === 'get_balance') {
-            // Case 4: Get Account Balance
             const balanceMessage = await getAccountBalances(analysis.account);
             return ctx.reply(balanceMessage);
 
         } else if (analysis && analysis.intent === 'get_analysis') {
-            // --- NEW ---
-            // Case 5: Get AI Analysis
             await ctx.reply('در حال تحلیل داده‌ها... لطفاً چند لحظه صبر کنید.');
             const analysisMessage = await getFinancialAnalysis(analysis.period);
             return ctx.reply(analysisMessage);
             
+        } else if (analysis && analysis.intent === 'set_reminder') { // <-- NEW
+            const reminderMessage = await setReminder(analysis.reminder);
+            return ctx.reply(reminderMessage);
+
         } else if (analysis === null) {
-            // Case 6: A major error occurred (network, API key, etc.)
             return ctx.reply('خطایی در ارتباط با هوش مصنوعی رخ داد. لطفاً بعداً تلاش کنید.');
         
-        } else {
-            // Case 7: analysis is {intent: "unrecognized"}
+        } else { // analysis.intent === "unrecognized"
             return ctx.reply('متوجه پیام شما نشدم. لطفاً دوباره تلاش کنید (مثلاً: "هزینه 10000 تست" یا "وضعیت مالی من چطوره؟")');
         }
 
     } catch (error) {
-        // Case 8: Catch any other unexpected errors
         console.error('Main Bot Error:', error);
         return ctx.reply('خطایی در سرور رخ داد. لطفاً بعداً تلاش کنید.');
     }
