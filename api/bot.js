@@ -82,12 +82,20 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
-// --- FIX: Updated prompt to handle relative time for reminders ---
-const GEMINI_PARSER_PROMPT = `
+// --- FIX: This function now dynamically creates the prompt ---
+async function getGeminiAnalysis(text) {
+  if (!geminiModel) throw new Error("Gemini Model is not initialized.");
+  
+  // Get current time in Tehran to send to Gemini
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
+  const currentTime = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false }); // e.g., "14:30"
+
+  // --- FIX: Create a dynamic prompt with the current time ---
+  const DYNAMIC_GEMINI_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
+**زمان فعلی به وقت تهران: ${currentTime} است.**
 متن ورودی کاربر را بخوانید و آن را به یکی از 7 ساختار JSON زیر تبدیل کنید.
-(زمان فعلی) که در ابتدای پیام کاربر به شما داده می‌شود، فقط برای محاسبه زمان یادآوری است.
 
 لیست دسته‌بندی‌های مجاز برای تراکنش‌ها:
 - هزینه (expense): ${JSON.stringify(VALID_CATEGORIES.expense)}
@@ -119,11 +127,10 @@ const GEMINI_PARSER_PROMPT = `
 
 7.  **تنظیم یادآوری سفارشی (ارتقا یافته)**:
     {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
-    -   شما باید عبارت زمانی کاربر را بر اساس "زمان فعلی" که در ابتدای پرامپت آمده، به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
-    مثال: (زمان فعلی: ۱۴:۳۰) "ساعت ۳ بعد از ظهر یادم بنداز..." -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "..."}}
-    مثال: (زمان فعلی: ۱۰:۳۳) "۵ دقیقه دیگه یادم بنداز تست کنم" -> {"intent":"set_reminder", "reminder": {"time": "10:38", "message": "تست کنم"}}
-    مثال: (زمان فعلی: ۰۹:۰۰) "۱ ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "10:00", "message": "یادم بنداز"}}
-    مثال: (زمان فعلی: ۲۳:۰۰) "2 ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "01:00", "message": "یادم بنداز"}}
+    -   شما باید عبارت زمانی کاربر را بر اساس "زمان فعلی" (${currentTime}) به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
+    مثال: "ساعت ۳ بعد از ظهر یادم بنداز..." -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "..."}}
+    مثال: "۵ دقیقه دیگه یادم بنداز تست کنم" -> {"intent":"set_reminder", "reminder": {"time": "HH:MM (محاسبه شده بر اساس ${currentTime})", "message": "تست کنم"}}
+    مثال: "۱ ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "HH:MM (محاسبه شده بر اساس ${currentTime})", "message": "یادم بنداز"}}
 
 8.  **نامفهوم**:
     {"intent": "unrecognized"}
@@ -132,20 +139,14 @@ const GEMINI_PARSER_PROMPT = `
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این ساختارها باشد.**
 `;
 
-async function getGeminiAnalysis(text) {
-  if (!geminiModel) throw new Error("Gemini Model is not initialized.");
-  
-  // --- FIX: Get current time in Tehran to send to Gemini ---
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
-  const currentTime = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false }); // e.g., "14:30"
-
   let jsonText = "";
   try {
     const result = await geminiModel.generateContent({
-        // --- FIX: Prepend the current time to the user's text ---
-        contents: [{ role: "user", parts: [{ text: `(زمان فعلی به وقت تهران: ${currentTime})\n\nپیام کاربر: ${text}` }] }],
+        // Send only the user's raw text
+        contents: [{ role: "user", parts: [{ text: text }] }],
+        // Send the dynamic prompt (with current time) as the system instruction
         systemInstruction: {
-            parts: [{ text: GEMINI_PARSER_PROMPT }]
+            parts: [{ text: DYNAMIC_GEMINI_PROMPT }]
         },
         generationConfig: { maxOutputTokens: 800, responseMimeType: "application/json" },
     });
@@ -319,22 +320,17 @@ async function getAccountBalances(accountRequest) {
     return message;
 }
 
-// --- FIX: Updated setReminder to handle calculated time ---
 async function setReminder(reminderData) {
     const { time, message } = reminderData;
     const [hours, minutes] = time.split(':').map(Number);
     
-    // Get current date in Tehran
     const nowInTehran = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
     
-    // Create reminder time based on Tehran's date
     const reminderTime = new Date(nowInTehran);
     reminderTime.setHours(hours, minutes, 0, 0);
 
-    // If the calculated time is already in the past (e.g., it's 10:40, user said "in 5 min", Gemini calculated 10:45)
-    // We must check if the reminderTime is earlier than the *current* Tehran time.
+    // If the calculated time is already in the past, set it for tomorrow
     if (reminderTime < nowInTehran) {
-        // This means the time is for tomorrow (e.g., it's 23:00, user says "in 2 hours", Gemini says 01:00)
         reminderTime.setDate(reminderTime.getDate() + 1);
     }
 
