@@ -82,10 +82,12 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
+// --- FIX: Updated prompt to handle relative time for reminders ---
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
 متن ورودی کاربر را بخوانید و آن را به یکی از 7 ساختار JSON زیر تبدیل کنید.
+(زمان فعلی) که در ابتدای پیام کاربر به شما داده می‌شود، فقط برای محاسبه زمان یادآوری است.
 
 لیست دسته‌بندی‌های مجاز برای تراکنش‌ها:
 - هزینه (expense): ${JSON.stringify(VALID_CATEGORIES.expense)}
@@ -99,10 +101,9 @@ const GEMINI_PARSER_PROMPT = `
     {"intent": "get_report", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }}
     مثال: "امروز چقدر خرج کردم؟" -> {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
 
-3.  **درخواست لیست تراکنش‌ها (جدید)**:
+3.  **درخواست لیست تراکنش‌ها**:
     {"intent": "get_transaction_list", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" }}
     مثال: "امروز چی خریدم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
-    مثال: "چه چیزهایی امروز خرج کردم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
 
 4.  **ثبت موجودی حساب**:
     {"intent": "update_balance", "account": { "name": "[string]", "balance": [number] }}
@@ -115,12 +116,14 @@ const GEMINI_PARSER_PROMPT = `
 6.  **درخواست تحلیل هوشمند**:
     {"intent": "get_analysis", "period": "month" | "week" | "today" }
     مثال: "این ماه چطور بودم؟" -> {"intent":"get_analysis", "period":"month"}
-    مثال: "آمار امروز رو بده" -> {"intent":"get_analysis", "period":"today"}
 
-7.  **تنظیم یادآوری سفارشی (جدید)**:
+7.  **تنظیم یادآوری سفارشی (ارتقا یافته)**:
     {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
-    مثال: "ساعت ۳ بعد از ظهر بهم یادآوری کن جزئیات مالی رو ثبت کنم" -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "جزئیات مالی رو ثبت کنم"}}
-    مثال: "یادم بنداز ساعت 9 شب قسط رو بدم" -> {"intent":"set_reminder", "reminder": {"time": "21:00", "message": "قسط رو بدم"}}
+    -   شما باید عبارت زمانی کاربر را بر اساس "زمان فعلی" که در ابتدای پرامپت آمده، به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
+    مثال: (زمان فعلی: ۱۴:۳۰) "ساعت ۳ بعد از ظهر یادم بنداز..." -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "..."}}
+    مثال: (زمان فعلی: ۱۰:۳۳) "۵ دقیقه دیگه یادم بنداز تست کنم" -> {"intent":"set_reminder", "reminder": {"time": "10:38", "message": "تست کنم"}}
+    مثال: (زمان فعلی: ۰۹:۰۰) "۱ ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "10:00", "message": "یادم بنداز"}}
+    مثال: (زمان فعلی: ۲۳:۰۰) "2 ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "01:00", "message": "یادم بنداز"}}
 
 8.  **نامفهوم**:
     {"intent": "unrecognized"}
@@ -132,14 +135,18 @@ const GEMINI_PARSER_PROMPT = `
 async function getGeminiAnalysis(text) {
   if (!geminiModel) throw new Error("Gemini Model is not initialized.");
   
+  // --- FIX: Get current time in Tehran to send to Gemini ---
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
+  const currentTime = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false }); // e.g., "14:30"
+
   let jsonText = "";
   try {
     const result = await geminiModel.generateContent({
-        contents: [{ role: "user", parts: [{ text: text }] }],
+        // --- FIX: Prepend the current time to the user's text ---
+        contents: [{ role: "user", parts: [{ text: `(زمان فعلی به وقت تهران: ${currentTime})\n\nپیام کاربر: ${text}` }] }],
         systemInstruction: {
             parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
-        // --- FIX: Increased token limit ---
         generationConfig: { maxOutputTokens: 800, responseMimeType: "application/json" },
     });
     
@@ -151,7 +158,6 @@ async function getGeminiAnalysis(text) {
     }
     if (!response.candidates || response.candidates[0].finishReason !== 'STOP') {
         console.warn(`Gemini did not finish. Reason: ${response.candidates[0].finishReason}`);
-        // This was the error: MAX_TOKENS
         return { intent: "unrecognized" };
     }
 
@@ -233,7 +239,6 @@ async function getReport(reportRequest) {
     return `مجموع ${typeText} شما در ${periodText}: ${formatCurrency(totalAmount)} تومان`;
 }
 
-// --- NEW: Get List of Transactions ---
 async function getTransactionList(reportRequest) {
     let { type, period } = reportRequest;
     let queryRef = db.collection('users').doc(FIREBASE_USER_ID).collection('transactions');
@@ -314,18 +319,22 @@ async function getAccountBalances(accountRequest) {
     return message;
 }
 
-// --- NEW: Set a Custom Reminder ---
+// --- FIX: Updated setReminder to handle calculated time ---
 async function setReminder(reminderData) {
     const { time, message } = reminderData;
     const [hours, minutes] = time.split(':').map(Number);
     
-    const now = new Date();
-    // Set reminder time in Tehran timezone
-    const reminderTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
+    // Get current date in Tehran
+    const nowInTehran = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
+    
+    // Create reminder time based on Tehran's date
+    const reminderTime = new Date(nowInTehran);
     reminderTime.setHours(hours, minutes, 0, 0);
 
-    // If time is in the past, set it for tomorrow
-    if (reminderTime < new Date()) {
+    // If the calculated time is already in the past (e.g., it's 10:40, user said "in 5 min", Gemini calculated 10:45)
+    // We must check if the reminderTime is earlier than the *current* Tehran time.
+    if (reminderTime < nowInTehran) {
+        // This means the time is for tomorrow (e.g., it's 23:00, user says "in 2 hours", Gemini says 01:00)
         reminderTime.setDate(reminderTime.getDate() + 1);
     }
 
@@ -335,10 +344,9 @@ async function setReminder(reminderData) {
         isSent: false
     });
     
-    return `✅ یادآوری تنظیم شد:\n"${message}"\nدر ساعت ${time} (فردا اگر زمان گذشته باشد).`;
+    return `✅ یادآوری تنظیم شد:\n"${message}"\nدر ساعت ${time}`;
 }
 
-// --- NEW AI ANALYST FUNCTION ---
 async function getFinancialAnalysis(period) {
     let dateRange;
     let periodText = "";
@@ -435,7 +443,7 @@ bot.on('text', async (ctx) => {
             const reportMessage = await getReport(analysis.report);
             return ctx.reply(reportMessage);
         
-        } else if (analysis && analysis.intent === 'get_transaction_list') { // <-- NEW
+        } else if (analysis && analysis.intent === 'get_transaction_list') {
             const listMessage = await getTransactionList(analysis.report);
             return ctx.reply(listMessage);
 
@@ -452,7 +460,7 @@ bot.on('text', async (ctx) => {
             const analysisMessage = await getFinancialAnalysis(analysis.period);
             return ctx.reply(analysisMessage);
             
-        } else if (analysis && analysis.intent === 'set_reminder') { // <-- NEW
+        } else if (analysis && analysis.intent === 'set_reminder') {
             const reminderMessage = await setReminder(analysis.reminder);
             return ctx.reply(reminderMessage);
 
