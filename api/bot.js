@@ -82,7 +82,6 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
-// --- FIX: Simplified reminder prompt to be more reliable ---
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
@@ -423,6 +422,11 @@ bot.on('text', async (ctx) => {
 
     try {
         const analysis = await getGeminiAnalysis(text);
+
+        // --- DEBUG LINE ADDED ---
+        // This will send the raw analysis object back to you.
+        await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
+        // --- END DEBUG ---
 
         if (analysis && analysis.intent === 'add_transaction') {
             const newTransaction = await addTransaction(analysis.transaction);
