@@ -141,7 +141,6 @@ async function getGeminiAnalysis(text) {
         systemInstruction: {
             parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
-        // --- FIX: Removed responseMimeType, increased tokens ---
         generationConfig: { maxOutputTokens: 1024 },
     });
     
@@ -162,12 +161,9 @@ async function getGeminiAnalysis(text) {
         return { intent: "unrecognized" };
     }
     
-    // --- FIX: Add robust JSON parsing logic ---
-    // The response might be wrapped in ```json ... ```
     if (jsonText.includes("```json")) {
       jsonText = jsonText.split("```json")[1].split("```")[0];
     }
-    // Or just wrapped in ```
     else if (jsonText.startsWith("```")) {
       jsonText = jsonText.substring(3, jsonText.length - 3);
     }
@@ -436,7 +432,7 @@ bot.on('text', async (ctx) => {
 
         // --- DEBUG LINE ADDED ---
         // This will send the raw analysis object back to you.
-        // await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
+        await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
         // --- END DEBUG ---
 
         if (analysis && analysis.intent === 'add_transaction') {
