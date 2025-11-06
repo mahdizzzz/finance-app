@@ -139,7 +139,8 @@ async function getGeminiAnalysis(text) {
         systemInstruction: {
             parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
-        generationConfig: { maxOutputTokens: 250, responseMimeType: "application/json" },
+        // --- FIX: Increased token limit ---
+        generationConfig: { maxOutputTokens: 800, responseMimeType: "application/json" },
     });
     
     const response = await result.response;
@@ -150,6 +151,7 @@ async function getGeminiAnalysis(text) {
     }
     if (!response.candidates || response.candidates[0].finishReason !== 'STOP') {
         console.warn(`Gemini did not finish. Reason: ${response.candidates[0].finishReason}`);
+        // This was the error: MAX_TOKENS
         return { intent: "unrecognized" };
     }
 
