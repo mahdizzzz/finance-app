@@ -427,13 +427,16 @@ bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     await ctx.replyWithChatAction('typing');
 
+    // --- DEBUG LINE 1 ---
+    await ctx.reply(`--- DEBUG 1: Calling Gemini... ---`);
+    // --- END DEBUG 1 ---
+
     try {
         const analysis = await getGeminiAnalysis(text);
 
-        // --- DEBUG LINE ADDED ---
-        // This will send the raw analysis object back to you.
-        await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
-        // --- END DEBUG ---
+        // --- DEBUG LINE 2 ---
+        await ctx.reply(`--- DEBUG 2: Gemini Response ---\n${JSON.stringify(analysis, null, 2)}`);
+        // --- END DEBUG 2 ---
 
         if (analysis && analysis.intent === 'add_transaction') {
             const newTransaction = await addTransaction(analysis.transaction);
