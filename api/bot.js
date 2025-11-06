@@ -82,19 +82,10 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
-// --- FIX: This function now dynamically creates the prompt ---
-async function getGeminiAnalysis(text) {
-  if (!geminiModel) throw new Error("Gemini Model is not initialized.");
-  
-  // Get current time in Tehran to send to Gemini
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tehran' }));
-  const currentTime = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', hour12: false }); // e.g., "14:30"
-
-  // --- FIX: Create a dynamic prompt with the current time ---
-  const DYNAMIC_GEMINI_PROMPT = `
+// --- FIX: Simplified reminder prompt to be more reliable ---
+const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
-**زمان فعلی به وقت تهران: ${currentTime} است.**
 متن ورودی کاربر را بخوانید و آن را به یکی از 7 ساختار JSON زیر تبدیل کنید.
 
 لیست دسته‌بندی‌های مجاز برای تراکنش‌ها:
@@ -125,12 +116,14 @@ async function getGeminiAnalysis(text) {
     {"intent": "get_analysis", "period": "month" | "week" | "today" }
     مثال: "این ماه چطور بودم؟" -> {"intent":"get_analysis", "period":"month"}
 
-7.  **تنظیم یادآوری سفارشی (ارتقا یافته)**:
+7.  **تنظیم یادآوری سفارشی (ساده شده)**:
     {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
-    -   شما باید عبارت زمانی کاربر را بر اساس "زمان فعلی" (${currentTime}) به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
+    -   شما باید عبارت زمانی کاربر را به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
+    -   **مهم:** این ربات فقط زمان‌های دقیق (مثل "ساعت ۳ بعد از ظهر" یا "ساعت ۲۱:۰۰") را می‌فهمد.
+    -   زمان‌های نسبی (مثل "۵ دقیقه دیگه" یا "۱ ساعت بعد") را به عنوان "unrecognized" در نظر بگیر.
     مثال: "ساعت ۳ بعد از ظهر یادم بنداز..." -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "..."}}
-    مثال: "۵ دقیقه دیگه یادم بنداز تست کنم" -> {"intent":"set_reminder", "reminder": {"time": "HH:MM (محاسبه شده بر اساس ${currentTime})", "message": "تست کنم"}}
-    مثال: "۱ ساعت دیگه یادم بنداز" -> {"intent":"set_reminder", "reminder": {"time": "HH:MM (محاسبه شده بر اساس ${currentTime})", "message": "یادم بنداز"}}
+    مثال: "یادم بنداز ساعت 9 شب قسط رو بدم" -> {"intent":"set_reminder", "reminder": {"time": "21:00", "message": "قسط رو بدم"}}
+    مثال: "۵ دقیقه دیگه یادم بنداز" -> {"intent":"unrecognized"}
 
 8.  **نامفهوم**:
     {"intent": "unrecognized"}
@@ -139,14 +132,15 @@ async function getGeminiAnalysis(text) {
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این ساختارها باشد.**
 `;
 
+async function getGeminiAnalysis(text) {
+  if (!geminiModel) throw new Error("Gemini Model is not initialized.");
+  
   let jsonText = "";
   try {
     const result = await geminiModel.generateContent({
-        // Send only the user's raw text
         contents: [{ role: "user", parts: [{ text: text }] }],
-        // Send the dynamic prompt (with current time) as the system instruction
         systemInstruction: {
-            parts: [{ text: DYNAMIC_GEMINI_PROMPT }]
+            parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
         generationConfig: { maxOutputTokens: 800, responseMimeType: "application/json" },
     });
