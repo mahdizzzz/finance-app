@@ -82,7 +82,6 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
-// --- FIX: Simplified reminder prompt to be more reliable ---
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
@@ -142,7 +141,8 @@ async function getGeminiAnalysis(text) {
         systemInstruction: {
             parts: [{ text: GEMINI_PARSER_PROMPT }]
         },
-        generationConfig: { maxOutputTokens: 800, responseMimeType: "application/json" },
+        // --- FIX: Removed responseMimeType, increased tokens ---
+        generationConfig: { maxOutputTokens: 1024 },
     });
     
     const response = await result.response;
@@ -161,8 +161,18 @@ async function getGeminiAnalysis(text) {
         console.warn("Gemini returned an empty string.");
         return { intent: "unrecognized" };
     }
+    
+    // --- FIX: Add robust JSON parsing logic ---
+    // The response might be wrapped in ```json ... ```
+    if (jsonText.includes("```json")) {
+      jsonText = jsonText.split("```json")[1].split("```")[0];
+    }
+    // Or just wrapped in ```
+    else if (jsonText.startsWith("```")) {
+      jsonText = jsonText.substring(3, jsonText.length - 3);
+    }
 
-    return JSON.parse(jsonText);
+    return JSON.parse(jsonText.trim());
 
   } catch (error) {
     console.error("Error in getGeminiAnalysis (network or parse):", error);
@@ -426,7 +436,7 @@ bot.on('text', async (ctx) => {
 
         // --- DEBUG LINE ADDED ---
         // This will send the raw analysis object back to you.
-        await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
+        // await ctx.reply(`--- DEBUG INFO ---\n${JSON.stringify(analysis, null, 2)}`);
         // --- END DEBUG ---
 
         if (analysis && analysis.intent === 'add_transaction') {
