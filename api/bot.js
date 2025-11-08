@@ -13,7 +13,7 @@ const FIREBASE_USER_ID = process.env.FIREBASE_USER_ID;
 
 const VALID_CATEGORIES = {
     income: ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'],
-    expense: ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'سایر']
+    expense: ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'اینترنت', 'سایر'] // <-- FIX: Added 'اینترنت'
 };
 
 let serviceAccount;
@@ -82,6 +82,7 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
+// --- FIX: Added new rule for verb-less expenses and new example ---
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
@@ -93,7 +94,10 @@ const GEMINI_PARSER_PROMPT = `
 
 1.  **ثبت تراکنش**:
     {"intent": "add_transaction", "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]", "category": "[string]" }}
+    -   **مهم:** اگر جمله فعل نداشت (مثل "خریدم" یا "گرفتم")، آن را به طور پیش‌فرض "expense" (هزینه) در نظر بگیر.
     مثال: "خرید تیشرت 5 میلیون" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 5000000, "description":"خرید تیشرت", "category": "پوشاک"}}
+    مثال: "بسته اینترنت 92 تومن" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 92000, "description":"بسته اینترنت", "category": "اینترنت"}}
+    مثال: "۱۵۰ هزار تومن بابت فلش گرفتم" -> {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش", "category": "فلش"}}
 
 2.  **درخواست گزارش (جمع کل)**:
     {"intent": "get_report", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }}
@@ -117,16 +121,14 @@ const GEMINI_PARSER_PROMPT = `
 
 7.  **تنظیم یادآوری سفارشی (ساده شده)**:
     {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
-    -   شما باید عبارت زمانی کاربر را به فرمت دقیق HH:MM (۲۴ ساعته) تبدیل کنید.
     -   **مهم:** این ربات فقط زمان‌های دقیق (مثل "ساعت ۳ بعد از ظهر" یا "ساعت ۲۱:۰۰") را می‌فهمد.
-    -   زمان‌های نسبی (مثل "۵ دقیقه دیگه" یا "۱ ساعت بعد") را به عنوان "unrecognized" در نظر بگیر.
-    مثال: "ساعت ۳ بعد از ظهر یادم بنداز..." -> {"intent":"set_reminder", "reminder": {"time": "15:00", "message": "..."}}
+    -   زمان‌های نسبی (مثل "۵ دقیقه دیگه") را به عنوان "unrecognized" در نظر بگیر.
     مثال: "یادم بنداز ساعت 9 شب قسط رو بدم" -> {"intent":"set_reminder", "reminder": {"time": "21:00", "message": "قسط رو بدم"}}
-    مثال: "۵ دقیقه دیگه یادم بنداز" -> {"intent":"unrecognized"}
 
 8.  **نامفهوم**:
     {"intent": "unrecognized"}
     مثال: "سلام خوبی؟" -> {"intent":"unrecognized"}
+    مثال: "۵ دقیقه دیگه یادم بنداز" -> {"intent":"unrecognized"}
 
 **مهم: پاسخ شما باید *فقط* و *همیشه* یکی از این ساختارها باشد.**
 `;
@@ -187,6 +189,7 @@ async function addTransaction(transactionData) {
       type: transactionData.type,
       amount: transactionData.amount,
       description: transactionData.description,
+      // --- FIX: Use the category from Gemini ---
       category: transactionData.category || 'سایر',
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }),
@@ -427,16 +430,10 @@ bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     await ctx.replyWithChatAction('typing');
 
-    // --- DEBUG LINE 1 ---
-    await ctx.reply(`--- DEBUG 1: Calling Gemini... ---`);
-    // --- END DEBUG 1 ---
+    // --- REMOVED DEBUG LINES ---
 
     try {
         const analysis = await getGeminiAnalysis(text);
-
-        // --- DEBUG LINE 2 ---
-        await ctx.reply(`--- DEBUG 2: Gemini Response ---\n${JSON.stringify(analysis, null, 2)}`);
-        // --- END DEBUG 2 ---
 
         if (analysis && analysis.intent === 'add_transaction') {
             const newTransaction = await addTransaction(analysis.transaction);
