@@ -2,6 +2,9 @@
   "name": "finance-app-server",
   "version": "1.0.0",
   "description": "Serverless functions for my finance app",
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
     "node-telegram-bot-api": "^0.61.0",
     "telegraf": "^4.10.0",
@@ -9,7 +12,3 @@
     "@google/generative-ai": "^0.15.0"
   }
 }
-
-
-
-
