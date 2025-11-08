@@ -13,7 +13,7 @@ const FIREBASE_USER_ID = process.env.FIREBASE_USER_ID;
 
 const VALID_CATEGORIES = {
     income: ['فلش', 'فیلترشکن', 'اینستاگرام', 'اپل آیدی', 'همکار', 'سایر'],
-    expense: ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'اینترنت', 'سایر'] // <-- FIX: Added 'اینترنت'
+    expense: ['خوراک', 'پوشاک', 'قهوه', 'قسط', 'اینترنت', 'سایر']
 };
 
 let serviceAccount;
@@ -82,30 +82,33 @@ const getDateRange = (period) => {
 };
 
 // --- GEMINI AI LOGIC (PARSER) ---
-// --- FIX: Added new rule for verb-less expenses and new example ---
+// --- FIX: Made prompt much stricter to differentiate intents ---
 const GEMINI_PARSER_PROMPT = `
 شما یک ربات تحلیلگر متن مالی به زبان فارسی هستید.
 وظیفه شما فقط و فقط خروجی دادن JSON است.
-متن ورودی کاربر را بخوانید و آن را به یکی از 7 ساختار JSON زیر تبدیل کنید.
+متن ورودی کاربر را بخوانید و آن را به یکی از 8 ساختار JSON زیر تبدیل کنید.
 
 لیست دسته‌بندی‌های مجاز برای تراکنش‌ها:
 - هزینه (expense): ${JSON.stringify(VALID_CATEGORIES.expense)}
 - درآمد (income): ${JSON.stringify(VALID_CATEGORIES.income)}
 
-1.  **ثبت تراکنش**:
+1.  **ثبت تراکنش**: (ثبت یک آیتم جدید)
     {"intent": "add_transaction", "transaction": { "type": "expense" | "income", "amount": [number], "description": "[string]", "category": "[string]" }}
-    -   **مهم:** اگر جمله فعل نداشت (مثل "خریدم" یا "گرفتم")، آن را به طور پیش‌فرض "expense" (هزینه) در نظر بگیر.
+    -   **مهم:** اگر جمله فعل نداشت (مثل "خریدم")، آن را "expense" در نظر بگیر.
     مثال: "خرید تیشرت 5 میلیون" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 5000000, "description":"خرید تیشرت", "category": "پوشاک"}}
     مثال: "بسته اینترنت 92 تومن" -> {"intent":"add_transaction", "transaction": {"type":"expense", "amount": 92000, "description":"بسته اینترنت", "category": "اینترنت"}}
     مثال: "۱۵۰ هزار تومن بابت فلش گرفتم" -> {"intent":"add_transaction", "transaction": {"type":"income", "amount": 150000, "description":"فلش", "category": "فلش"}}
 
-2.  **درخواست گزارش (جمع کل)**:
+2.  **درخواست گزارش (جمع کل)**: (پرسیدن در مورد "چقدر" یا "مجموع")
     {"intent": "get_report", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" | "all_time" }}
     مثال: "امروز چقدر خرج کردم؟" -> {"intent":"get_report", "report": {"type":"expense", "period":"today"}}
+    مثال: "جمع خرج این ماه" -> {"intent":"get_report", "report": {"type":"expense", "period":"month"}}
 
-3.  **درخواست لیست تراکنش‌ها**:
+3.  **درخواست لیست تراکنش‌ها**: (پرسیدن در مورد "چی" یا "لیست")
     {"intent": "get_transaction_list", "report": { "type": "expense" | "income" | "all", "period": "today" | "month" }}
     مثال: "امروز چی خریدم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
+    مثال: "چه چیزهایی امروز خرج کردم؟" -> {"intent":"get_transaction_list", "report": {"type":"expense", "period":"today"}}
+    مثال: "لیست درآمدهای این ماه" -> {"intent":"get_transaction_list", "report": {"type":"income", "period":"month"}}
 
 4.  **ثبت موجودی حساب**:
     {"intent": "update_balance", "account": { "name": "[string]", "balance": [number] }}
@@ -115,14 +118,16 @@ const GEMINI_PARSER_PROMPT = `
     {"intent": "get_balance", "account": { "name": "[string]" }}
     مثال: "موجودی‌هام چقدره؟" -> {"intent":"get_balance", "account": {"name": "all"}}
 
-6.  **درخواست تحلیل هوشمند**:
+6.  **درخواست تحلیل هوشمند**: (پرسیدن در مورد "وضعیت"، "چطور" یا "تحلیل")
     {"intent": "get_analysis", "period": "month" | "week" | "today" }
     مثال: "این ماه چطور بودم؟" -> {"intent":"get_analysis", "period":"month"}
+    مثال: "وضعیت مالی من چطوره؟" -> {"intent":"get_analysis", "period":"month"}
+    مثال: "آمار امروز رو با جزئیات بده" -> {"intent":"get_analysis", "period":"today"}
 
-7.  **تنظیم یادآوری سفارشی (ساده شده)**:
+7.  **تنظیم یادآوری سفارشی**: (فقط زمان دقیق)
     {"intent": "set_reminder", "reminder": { "time": "[string] (HH:MM به وقت تهران)", "message": "[string]" }}
-    -   **مهم:** این ربات فقط زمان‌های دقیق (مثل "ساعت ۳ بعد از ظهر" یا "ساعت ۲۱:۰۰") را می‌فهمد.
-    -   زمان‌های نسبی (مثل "۵ دقیقه دیگه") را به عنوان "unrecognized" در نظر بگیر.
+    -   **مهم:** فقط زمان‌های دقیق (مثل "ساعت ۳ بعد از ظهر" یا "ساعت ۲۱:۰۰") را بپذیر.
+    -   زمان‌های نسبی (مثل "۵ دقیقه دیگه") را "unrecognized" در نظر بگیر.
     مثال: "یادم بنداز ساعت 9 شب قسط رو بدم" -> {"intent":"set_reminder", "reminder": {"time": "21:00", "message": "قسط رو بدم"}}
 
 8.  **نامفهوم**:
@@ -189,7 +194,6 @@ async function addTransaction(transactionData) {
       type: transactionData.type,
       amount: transactionData.amount,
       description: transactionData.description,
-      // --- FIX: Use the category from Gemini ---
       category: transactionData.category || 'سایر',
       date: new Date().toISOString().split('T')[0],
       time: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tehran' }),
